@@ -68,6 +68,7 @@ private:
 	GLFWwindow *pvwindow;
 
 	VkInstance pvinstance;
+	VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 	VkDebugReportCallbackEXT debugCallbackExt;
 
 	std::vector<const char*> validationLayers =
@@ -195,8 +196,103 @@ private:
 	}
 	void pickPhysicalDevice()
 	{
+		uint32_t deviceCount = 0;
+		vkEnumeratePhysicalDevices(pvinstance, &deviceCount, nullptr);
+
+		if (deviceCount == 0) 
+		{
+			throw std::runtime_error("Error: failed to find GPUs with Vulkan Support");
+		}
+
+		std::vector<VkPhysicalDevice> devices(deviceCount);
+		vkEnumeratePhysicalDevices(pvinstance, &deviceCount, devices.data());
+
+		struct ScoredDev { int score; VkPhysicalDevice dev; };
+		std::vector<ScoredDev> candidates;
+		for (const auto& dev : devices)
+		{
+			if (isDeviceSuitable(dev))
+			{
+				ScoredDev sd;
+				sd.dev = dev;
+				sd.score = scoreDevice(dev);
+				candidates.push_back(sd);
+			}
+		}
+
+
+		if (candidates.size() == 0)
+		{
+			throw std::runtime_error("failed to find a suitable GPU!");
+		}
+
+		
+		{// Get Highest Scoring Device
+			int indexOfHighest = -1;
+			int highestScore = -1;
+			for (int i = 0; i < candidates.size(); ++i)
+			{
+				if (candidates[i].score > highestScore)
+				{
+					highestScore = candidates[i].score;
+					indexOfHighest = i;
+				}
+			}
+		}
+
+
+
+		
+		
 
 	}
+
+	bool isDeviceSuitable(VkPhysicalDevice device)
+	{
+		// Base Sevice Suitability checks
+		VkPhysicalDeviceProperties deviceProperties;
+		vkGetPhysicalDeviceProperties(device, &deviceProperties);
+
+		// Device Features
+		VkPhysicalDeviceFeatures deviceFeatures;
+		vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
+
+		return true;
+
+		// @TODO Add score system???
+		// @TODO Checks for features such as geometry shaders Descrete GPU, etc..
+		//bool deviceOK =
+		//	(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) ||
+		//	(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU);
+		//
+		//return deviceOK;
+	}
+	int scoreDevice(VkPhysicalDevice device)
+	{
+		int scoreAccum = 0;
+
+		// Base Sevice Suitability checks
+		VkPhysicalDeviceProperties deviceProperties;
+		vkGetPhysicalDeviceProperties(device, &deviceProperties);
+
+		// Device Features
+		VkPhysicalDeviceFeatures deviceFeatures;
+		vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
+		
+		// Discrete GPUs have a significant performance advantage
+		if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) 
+			scoreAccum += 10000;
+		
+		// Maximum possible size of textures affects graphics quality
+		scoreAccum += deviceProperties.limits.maxPerStageResources;
+		scoreAccum += deviceProperties.limits.maxVertexInputBindings;
+		scoreAccum += deviceProperties.limits.maxImageDimension2D;
+
+		return scoreAccum;
+	}
+
+
+	// Helper functions
 	bool checkValidationLayerSupport()
 	{
 		// Get list of available Layers
@@ -271,7 +367,6 @@ private:
 		}
 		return true;
 	}
-
 	std::vector<const char*> getExtensionsRequiredByGLFW()
 	{
 		uint32_t glfwExtensionCount = 0;
