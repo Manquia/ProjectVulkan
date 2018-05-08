@@ -43,6 +43,20 @@ public:
 
 private:
 
+#pragma region structures
+
+	struct QueueFamilyIndices
+	{
+		int graphicsFamily = -1;
+		bool isComplete()
+		{
+			return graphicsFamily >= 0;
+		}
+	};
+
+#pragma endregion
+
+
 #pragma region Constants
 
 	const int PV_WINDOW_WIDTH = 800;
@@ -52,6 +66,7 @@ private:
 	const char* ENGINE_NAME = APPLICATION_NAME;
 
 	const bool PRINT_AVAILABLE_VULKAN_EXTENSIONS = true;
+	const bool PRINT_DEBUG_LOGS = true;
 
 	
 
@@ -143,7 +158,7 @@ private:
 			appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
 			appInfo.pEngineName = ENGINE_NAME;
 			appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-			appInfo.apiVersion = VK_API_VERSION_1_1; // @TODO @BUG? May want to change this to 1.0?
+			appInfo.apiVersion = VK_API_VERSION_1_0; // @TODO @BUG? May want to change this to 1.0?
 
 			// setup instance CreationInfo 
 			VkInstanceCreateInfo createInfo = {};
@@ -207,15 +222,16 @@ private:
 		std::vector<VkPhysicalDevice> devices(deviceCount);
 		vkEnumeratePhysicalDevices(pvinstance, &deviceCount, devices.data());
 
-		struct ScoredDev { int score; VkPhysicalDevice dev; };
+		struct ScoredDev { int score; VkPhysicalDevice device; std::string name; };
 		std::vector<ScoredDev> candidates;
 		for (const auto& dev : devices)
 		{
 			if (isDeviceSuitable(dev))
 			{
 				ScoredDev sd;
-				sd.dev = dev;
+				sd.device = dev;
 				sd.score = scoreDevice(dev);
+				sd.name = GetDeviceName(dev);
 				candidates.push_back(sd);
 			}
 		}
@@ -227,7 +243,7 @@ private:
 		}
 
 		
-		{// Get Highest Scoring Device
+		{// Get Highest Scoring Device, and set physical Device to it
 			int indexOfHighest = -1;
 			int highestScore = -1;
 			for (int i = 0; i < candidates.size(); ++i)
@@ -238,9 +254,22 @@ private:
 					indexOfHighest = i;
 				}
 			}
+
+			ScoredDev selectedDevice = candidates[indexOfHighest];
+			physicalDevice = selectedDevice.device;
+			
+			if (PRINT_DEBUG_LOGS)
+			{
+				std::cout << "Selected Physical Device: " << selectedDevice.name << "\n";
+				std::cout << "Available Physical Devices:\n";
+
+				for (const auto& sd : candidates)
+				{
+					std::cout << "\t" << sd.name << "\n";
+				}
+				std::cout << std::endl;
+			}
 		}
-
-
 
 		
 		
@@ -249,6 +278,7 @@ private:
 
 	bool isDeviceSuitable(VkPhysicalDevice device)
 	{
+		bool notSuitable = false;
 		// Base Sevice Suitability checks
 		VkPhysicalDeviceProperties deviceProperties;
 		vkGetPhysicalDeviceProperties(device, &deviceProperties);
@@ -257,15 +287,20 @@ private:
 		VkPhysicalDeviceFeatures deviceFeatures;
 		vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
 
-		return true;
+		// has a good Queue Family types which we need
+		auto family = findQueueFamilies(device, VK_QUEUE_GRAPHICS_BIT);
+		notSuitable |= (family.isComplete() == false);
 
-		// @TODO Add score system???
-		// @TODO Checks for features such as geometry shaders Descrete GPU, etc..
-		//bool deviceOK =
-		//	(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) ||
-		//	(deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU);
-		//
-		//return deviceOK;
+		return notSuitable == false;
+	}
+	std::string GetDeviceName(VkPhysicalDevice device)
+	{
+		// Base Sevice Suitability checks
+		VkPhysicalDeviceProperties deviceProperties;
+		vkGetPhysicalDeviceProperties(device, &deviceProperties);
+		std::string name;
+		name.append(deviceProperties.deviceName);
+		return name;
 	}
 	int scoreDevice(VkPhysicalDevice device)
 	{
@@ -383,6 +418,32 @@ private:
 
 		return extensions;
 	}
+	QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device, VkQueueFlags qualifierFlags)
+	{
+		QueueFamilyIndices indicies = {};
+
+		uint32_t queueFamilyCount = 0;
+		vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
+		std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+		vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
+
+		// find first queueFamily which satisfies our needs
+		{
+			for (int i = 0; i < queueFamilies.size(); ++i)
+			{
+				// family has a some number of that queue
+				if (queueFamilies[i].queueCount > 0 &&
+				   (queueFamilies[i].queueFlags & qualifierFlags) == qualifierFlags)
+				{
+					indicies.graphicsFamily = i;
+				}
+				if (indicies.isComplete())
+					break;
+			}
+		}
+
+		return indicies;
+	}
 
 #pragma endregion
 
@@ -395,6 +456,7 @@ private:
 	}
 
 
+#pragma region Cleanup
 	void cleanup() {
 
 		if(enableValidationLayers)
@@ -428,6 +490,7 @@ private:
 		}
 	}
 
+#pragma endregion
 };
 
 #pragma region ErrorHandling
