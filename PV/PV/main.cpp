@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <string>
 #include <vector>
+#include <set>
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 	VkDebugReportFlagsEXT flags,
@@ -20,7 +21,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 
 #pragma region Macros
 #define allocnullptr nullptr
-#define PVVK_RUN(VK_OPERATION)																													\
+#define PV_VK_RUN(VK_OPERATION)																													\
 do { VkResult res = VK_OPERATION;																												\
 	if (res != VK_SUCCESS)																														\
 	{																																			\
@@ -50,9 +51,12 @@ private:
 	struct QueueFamilyIndices
 	{
 		int graphicsFamily = -1;
+		int presentFamily = -1;
+
 		bool isComplete()
 		{
-			return graphicsFamily >= 0;
+			// We can do graphics && we can present
+			return graphicsFamily >= 0 && presentFamily >= 0;
 		}
 	};
 
@@ -69,6 +73,8 @@ private:
 
 	const bool PRINT_AVAILABLE_VULKAN_EXTENSIONS = true;
 	const bool PRINT_DEBUG_LOGS = true;
+
+	const VkQueueFlagBits PV_VK_QUEUE_FLAGS = VK_QUEUE_GRAPHICS_BIT;
 
 	
 
@@ -88,6 +94,7 @@ private:
 	VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 	VkDevice device = VK_NULL_HANDLE;
 	VkQueue graphicsQueue;
+	VkQueue presentQueue;
 	VkSurfaceKHR surface;
 	VkDebugReportCallbackEXT debugCallbackExt;
 
@@ -191,7 +198,7 @@ private:
 			}
 
 			// Creating the vulkan instance
-			PVVK_RUN(vkCreateInstance(&createInfo, allocnullptr, &pvinstance));
+			PV_VK_RUN(vkCreateInstance(&createInfo, allocnullptr, &pvinstance));
 		}
 	}
 	void setupDebugCallback()
@@ -215,7 +222,7 @@ private:
 				throw std::runtime_error("failed to load vkCreateDebugReportCallbackEXT extension function");
 			}
 			
-			PVVK_RUN(func(pvinstance, &createInfo, allocnullptr, &debugCallbackExt));
+			PV_VK_RUN(func(pvinstance, &createInfo, allocnullptr, &debugCallbackExt));
 		}
 
 	}
@@ -229,7 +236,7 @@ private:
 		// for more details
 
 		// let glfw handle surface creation! yeah!
-		PVVK_RUN(glfwCreateWindowSurface(pvinstance, pvwindow, allocnullptr, &surface));
+		PV_VK_RUN(glfwCreateWindowSurface(pvinstance, pvwindow, allocnullptr, &surface));
 	}
 	void pickPhysicalDevice()
 	{
@@ -241,20 +248,20 @@ private:
 			throw std::runtime_error("Error: failed to find GPUs with Vulkan Support");
 		}
 
-		std::vector<VkPhysicalDevice> devices(deviceCount);
-		vkEnumeratePhysicalDevices(pvinstance, &deviceCount, devices.data());
+		std::vector<VkPhysicalDevice> physicalDevices(deviceCount);
+		vkEnumeratePhysicalDevices(pvinstance, &deviceCount, physicalDevices.data());
 
-		struct ScoredDev { int score; VkPhysicalDevice device; std::string name; };
-		std::vector<ScoredDev> candidates;
-		for (const auto& dev : devices)
+		struct ScoredPhysicalDevice { int score; VkPhysicalDevice device; std::string name; };
+		std::vector<ScoredPhysicalDevice> candidates;
+		for (const auto& physDev : physicalDevices)
 		{
-			if (isDeviceSuitable(dev))
+			if (isDeviceSuitable(physDev))
 			{
-				ScoredDev sd;
-				sd.device = dev;
-				sd.score = scoreDevice(dev);
-				sd.name = GetDeviceName(dev);
-				candidates.push_back(sd);
+				ScoredPhysicalDevice spd;
+				spd.device = physDev;
+				spd.score = scoreDevice(physDev);
+				spd.name = GetDeviceName(physDev);
+				candidates.push_back(spd);
 			}
 		}
 
@@ -277,8 +284,9 @@ private:
 				}
 			}
 
-			ScoredDev selectedDevice = candidates[indexOfHighest];
+			ScoredPhysicalDevice selectedDevice = candidates[indexOfHighest];
 			physicalDevice = selectedDevice.device;
+			selectedQueueFamily = findQueueFamilies(physicalDevice, PV_VK_QUEUE_FLAGS);
 			
 			if (PRINT_DEBUG_LOGS)
 			{
@@ -301,24 +309,33 @@ private:
 
 	void createLogicalDevice()
 	{
-		VkDeviceQueueCreateInfo queueCreateInfo = {};
-		queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-		queueCreateInfo.queueFamilyIndex = selectedQueueFamily.graphicsFamily;
-		queueCreateInfo.queueCount = 1;
-		queueCreateInfo.pQueuePriorities = &queuePriority;
+		// Create Present AND Graphics Queue. Push onto std::vector and then create them...
 
+		std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
+		std::set<int> uniqueQueueFamiles = { selectedQueueFamily.graphicsFamily, selectedQueueFamily.presentFamily };
+
+		for (int queueFamily : uniqueQueueFamiles)
+		{
+			VkDeviceQueueCreateInfo queueCreateInfo = {};
+
+			queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+			queueCreateInfo.queueFamilyIndex = queueFamily;
+			queueCreateInfo.queueCount = 1;
+			queueCreateInfo.pQueuePriorities = &queuePriority;
+
+			queueCreateInfos.push_back(queueCreateInfo);
+		}
+
+		
 		// default features are fine for now. If we do anything fancy we probably want to change this...
 		VkPhysicalDeviceFeatures deviceFeatures = {}; 
 
-
 		VkDeviceCreateInfo deviceCreateInfo = {};
 		deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-		deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
-		deviceCreateInfo.queueCreateInfoCount = 1;
-		// Device Features Enable
-		deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
-		// Device Extensions here, none for now
-		deviceCreateInfo.enabledExtensionCount = 0;
+		deviceCreateInfo.pQueueCreateInfos = queueCreateInfos.data();
+		deviceCreateInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
+		deviceCreateInfo.pEnabledFeatures = &deviceFeatures;// Device Features Enable
+		deviceCreateInfo.enabledExtensionCount = 0;// Device Extensions here, none for now
 
 		// Validation Layers
 		if (enableValidationLayers)
@@ -332,11 +349,13 @@ private:
 		}
 
 		// create the logical device
-		PVVK_RUN(vkCreateDevice(physicalDevice, &deviceCreateInfo, allocnullptr, &device));
+		PV_VK_RUN(vkCreateDevice(physicalDevice, &deviceCreateInfo, allocnullptr, &device));
 
-		// Get the graphics queu from the logical device. graphic queue is implicitly created.
-		// queue index is 0 b/c we only have 1 graphicsQueue @TODO make this use multiple queues
+		// Get the graphics queue from the logical device. graphic queue is implicitly created.
+		// queue index is 0 b/c we only have 1 graphicsQueue @TODO make this use multiple graphics queues ?
 		vkGetDeviceQueue(device, selectedQueueFamily.graphicsFamily, 0, &graphicsQueue);
+		// Get the present queue from the logical device. @TODO make multiple present queues?
+		vkGetDeviceQueue(device, selectedQueueFamily.presentFamily, 0, &presentQueue);
 	}
 	bool isDeviceSuitable(VkPhysicalDevice device)
 	{
@@ -350,8 +369,9 @@ private:
 		vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
 
 		// has a good Queue Family, select it
-		selectedQueueFamily = findQueueFamilies(device, VK_QUEUE_GRAPHICS_BIT);
-		notSuitable |= (selectedQueueFamily.isComplete() == false);
+		
+		QueueFamilyIndices queueFamily = findQueueFamilies(device, PV_VK_QUEUE_FLAGS);
+		notSuitable |= (queueFamily.isComplete() == false);
 
 		return notSuitable == false;
 	}
@@ -491,14 +511,24 @@ private:
 
 		// find first queueFamily which satisfies our needs
 		{
-			for (int i = 0; i < queueFamilies.size(); ++i)
+			for (uint32_t i = 0; i < queueFamilies.size(); ++i)
 			{
+				// family has present support
+				VkBool32 presentSupport = false;
+				vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
+				if (queueFamilies[i].queueCount > 0 && presentSupport)
+				{
+					indicies.presentFamily = i;
+				}
+				
 				// family has a some number of that queue
 				if (queueFamilies[i].queueCount > 0 &&
 				   (queueFamilies[i].queueFlags & qualifierFlags) == qualifierFlags)
 				{
 					indicies.graphicsFamily = i;
 				}
+
+				// if QueueFamily Index is good/complete, use it!
 				if (indicies.isComplete())
 					break;
 			}
