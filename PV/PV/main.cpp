@@ -226,7 +226,6 @@ private:
 		}
 
 	}
-	
 	void createSurface()
 	{
 		// we will let glfw handle our surface creation, but we can do this ourself 
@@ -300,13 +299,7 @@ private:
 				std::cout << std::endl;
 			}
 		}
-
-		
-		
-
 	}
-
-
 	void createLogicalDevice()
 	{
 		// Create Present AND Graphics Queue. Push onto std::vector and then create them...
@@ -357,6 +350,8 @@ private:
 		// Get the present queue from the logical device. @TODO make multiple present queues?
 		vkGetDeviceQueue(device, selectedQueueFamily.presentFamily, 0, &presentQueue);
 	}
+
+	// Helper functions
 	bool isDeviceSuitable(VkPhysicalDevice device)
 	{
 		bool notSuitable = false;
@@ -407,9 +402,6 @@ private:
 
 		return scoreAccum;
 	}
-
-
-	// Helper functions
 	bool checkValidationLayerSupport()
 	{
 		// Get list of available Layers
@@ -549,23 +541,23 @@ private:
 
 
 #pragma region Cleanup
-	void cleanup() {
-
-		// destroy logical device
-		vkDestroyDevice(device, allocnullptr);
-
-		if(enableValidationLayers)
-		{
-			DestroyDebugReportCallbackEXT();
-		}
-
-
+	void cleanup() 
+	{
 		// vulkan cleanup
 		{
+			// destroy logical device
+			vkDestroyDevice(device, allocnullptr);
+
+			if (enableValidationLayers)
+			{
+				DestroyDebugReportCallbackEXT();
+			}
+
 			vkDestroySurfaceKHR(pvinstance, surface, allocnullptr);
 			vkDestroyInstance(pvinstance, allocnullptr);
 		}
 
+		// GLFW Cleanup
 		{
 			// destroy GLFW window
 			glfwDestroyWindow(pvwindow);
