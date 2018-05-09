@@ -34,6 +34,8 @@ do { VkResult res = VK_OPERATION;																												\
 
 class PVWindow {
 public:
+	
+	// code interface
 	void run() {
 		initWindow();
 		initRenderer();
@@ -84,6 +86,7 @@ private:
 
 	VkInstance pvinstance;
 	VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+	VkDevice device = VK_NULL_HANDLE;
 	VkDebugReportCallbackEXT debugCallbackExt;
 
 	std::vector<const char*> validationLayers =
