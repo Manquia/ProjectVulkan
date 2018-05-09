@@ -88,6 +88,7 @@ private:
 	VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 	VkDevice device = VK_NULL_HANDLE;
 	VkQueue graphicsQueue;
+	VkSurfaceKHR surface;
 	VkDebugReportCallbackEXT debugCallbackExt;
 
 	QueueFamilyIndices selectedQueueFamily;
@@ -123,6 +124,7 @@ private:
 	{
 		createInstance();
 		setupDebugCallback();
+		createSurface();
 		pickPhysicalDevice();
 		createLogicalDevice();
 	}
@@ -216,6 +218,18 @@ private:
 			PVVK_RUN(func(pvinstance, &createInfo, allocnullptr, &debugCallbackExt));
 		}
 
+	}
+	
+	void createSurface()
+	{
+		// we will let glfw handle our surface creation, but we can do this ourself 
+		// more directly by loading in the functions from the instance which has the extensions
+		// to create the surface. These extensions are incuded in the "required extesions for glfw"
+		// we added a while back. See (https://vulkan-tutorial.com/Drawing_a_triangle/Presentation/Window_surface)
+		// for more details
+
+		// let glfw handle surface creation! yeah!
+		PVVK_RUN(glfwCreateWindowSurface(pvinstance, pvwindow, allocnullptr, &surface));
 	}
 	void pickPhysicalDevice()
 	{
@@ -515,8 +529,10 @@ private:
 			DestroyDebugReportCallbackEXT();
 		}
 
+
 		// vulkan cleanup
 		{
+			vkDestroySurfaceKHR(pvinstance, surface, allocnullptr);
 			vkDestroyInstance(pvinstance, allocnullptr);
 		}
 
