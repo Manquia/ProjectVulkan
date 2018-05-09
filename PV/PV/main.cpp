@@ -87,7 +87,11 @@ private:
 	VkInstance pvinstance;
 	VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 	VkDevice device = VK_NULL_HANDLE;
+	VkQueue graphicsQueue;
 	VkDebugReportCallbackEXT debugCallbackExt;
+
+	QueueFamilyIndices selectedQueueFamily;
+	float queuePriority = 1.0f;
 
 	std::vector<const char*> validationLayers =
 	{
@@ -120,6 +124,7 @@ private:
 		createInstance();
 		setupDebugCallback();
 		pickPhysicalDevice();
+		createLogicalDevice();
 	}
 
 	void createInstance()
@@ -279,6 +284,46 @@ private:
 
 	}
 
+
+	void createLogicalDevice()
+	{
+		VkDeviceQueueCreateInfo queueCreateInfo = {};
+		queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+		queueCreateInfo.queueFamilyIndex = selectedQueueFamily.graphicsFamily;
+		queueCreateInfo.queueCount = 1;
+		queueCreateInfo.pQueuePriorities = &queuePriority;
+
+		// default features are fine for now. If we do anything fancy we probably want to change this...
+		VkPhysicalDeviceFeatures deviceFeatures = {}; 
+
+
+		VkDeviceCreateInfo deviceCreateInfo = {};
+		deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+		deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
+		deviceCreateInfo.queueCreateInfoCount = 1;
+		// Device Features Enable
+		deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
+		// Device Extensions here, none for now
+		deviceCreateInfo.enabledExtensionCount = 0;
+
+		// Validation Layers
+		if (enableValidationLayers)
+		{
+			deviceCreateInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
+			deviceCreateInfo.ppEnabledLayerNames = validationLayers.data();
+		}
+		else
+		{
+			deviceCreateInfo.enabledLayerCount = 0;
+		}
+
+		// create the logical device
+		PVVK_RUN(vkCreateDevice(physicalDevice, &deviceCreateInfo, allocnullptr, &device));
+
+		// Get the graphics queu from the logical device. graphic queue is implicitly created.
+		// queue index is 0 b/c we only have 1 graphicsQueue @TODO make this use multiple queues
+		vkGetDeviceQueue(device, selectedQueueFamily.graphicsFamily, 0, &graphicsQueue);
+	}
 	bool isDeviceSuitable(VkPhysicalDevice device)
 	{
 		bool notSuitable = false;
@@ -290,9 +335,9 @@ private:
 		VkPhysicalDeviceFeatures deviceFeatures;
 		vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
 
-		// has a good Queue Family types which we need
-		auto family = findQueueFamilies(device, VK_QUEUE_GRAPHICS_BIT);
-		notSuitable |= (family.isComplete() == false);
+		// has a good Queue Family, select it
+		selectedQueueFamily = findQueueFamilies(device, VK_QUEUE_GRAPHICS_BIT);
+		notSuitable |= (selectedQueueFamily.isComplete() == false);
 
 		return notSuitable == false;
 	}
@@ -461,6 +506,9 @@ private:
 
 #pragma region Cleanup
 	void cleanup() {
+
+		// destroy logical device
+		vkDestroyDevice(device, allocnullptr);
 
 		if(enableValidationLayers)
 		{
