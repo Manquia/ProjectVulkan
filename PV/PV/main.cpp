@@ -486,6 +486,10 @@ private:
 			PV_VK_RUN(vkCreateImageView(device, &createInfo, allocnullptr, &swapChainImageViews[i]));
 		}
 	}
+	void createGraphicsPipeline()
+	{
+
+	}
 	// Helper functions
 	bool isDeviceSuitable(VkPhysicalDevice device)
 	{
