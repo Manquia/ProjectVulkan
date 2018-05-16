@@ -10,6 +10,8 @@
 #include <set>
 #include <algorithm> // std::min,max
 
+#include "Misc.hpp"
+
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 	VkDebugReportFlagsEXT flags,
 	VkDebugReportObjectTypeEXT objType,
@@ -21,6 +23,16 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 	void* userData);
 
 #pragma region Macros
+
+#ifndef defer
+struct defer_dummy {};
+template <class F> struct deferrer { F f; ~deferrer() { f(); } };
+template <class F> deferrer<F> operator*(defer_dummy, F f) { return { f }; }
+#define DEFER_(LINE) zz_defer##LINE
+#define DEFER(LINE) DEFER_(LINE)
+#define defer auto DEFER(__LINE__) = defer_dummy{} *[&]()
+#endif // defer
+
 #define allocnullptr nullptr
 #define PV_VK_RUN(VK_OPERATION)																													\
 do { VkResult res = VK_OPERATION;																												\
@@ -154,7 +166,8 @@ private:
 		pickPhysicalDevice();
 		createLogicalDevice();
 		createSwapChain();
-		createSwapChainImageViews();	
+		createSwapChainImageViews();
+		createGraphicsPipeline();
 	}
 
 	void createInstance()
@@ -488,7 +501,34 @@ private:
 	}
 	void createGraphicsPipeline()
 	{
+		auto vertShaderCode = readBinaryFile("../SPV/vert.spv"); //@Speed
+		auto fragShaderCode = readBinaryFile("../SPV/frag.spv"); //@Speed
 
+		VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
+		VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
+
+		VkPipelineShaderStageCreateInfo vertShaderStageInfo = {};
+		vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+		vertShaderStageInfo.module = vertShaderModule;
+		vertShaderStageInfo.pName = "main";
+		//vertShaderStageInfo.pSpecializationInfo; // used for setting constants
+
+		VkPipelineShaderStageCreateInfo fragShaderStageInfo = {};
+		fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+		fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+		fragShaderStageInfo.module = fragShaderModule;
+		fragShaderStageInfo.pName = "main";
+		//vertShaderStageInfo.pSpecializationInfo; // used for setting constants 
+
+		VkPipelineShaderStageCreateInfo shaderStages[] =
+		{
+			vertShaderStageInfo, fragShaderStageInfo
+		};
+
+
+		vkDestroyShaderModule(device, vertShaderModule, allocnullptr);
+		vkDestroyShaderModule(device, fragShaderModule, allocnullptr);
 	}
 	// Helper functions
 	bool isDeviceSuitable(VkPhysicalDevice device)
@@ -800,6 +840,18 @@ private:
 		// we have found all of the required device extensions
 		return requiredExtensions.empty();
 	}
+
+	VkShaderModule createShaderModule(const std::vector<char>& byteCode)
+	{
+		VkShaderModuleCreateInfo createInfo = {};
+		createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+		createInfo.codeSize = byteCode.size();
+		createInfo.pCode = reinterpret_cast<const uint32_t*>(byteCode.data());
+
+		VkShaderModule shaderModule;
+		PV_VK_RUN(vkCreateShaderModule(device, &createInfo, allocnullptr, &shaderModule));
+		return shaderModule;
+	}
 #pragma endregion
 
 	void runLoop() 
@@ -902,3 +954,4 @@ int main() {
 	//std::cin >> input;
 	return EXIT_SUCCESS;
 }
+
