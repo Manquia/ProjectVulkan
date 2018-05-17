@@ -526,6 +526,55 @@ private:
 			vertShaderStageInfo, fragShaderStageInfo
 		};
 
+		// Setup vertex Input
+		VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
+		vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+		vertexInputInfo.vertexBindingDescriptionCount = 0; // @TODO @MESH LOADING
+		vertexInputInfo.pVertexBindingDescriptions = nullptr; // @TODO @MESH LOADING
+		vertexInputInfo.vertexAttributeDescriptionCount = 0; // @TODO @MESH LOADING
+		vertexInputInfo.pVertexAttributeDescriptions = nullptr; // @TODO @MESH LOADING
+
+		// setup Input Assembly (Draw Mode)
+		VkPipelineInputAssemblyStateCreateInfo inputAssembly = {};
+		inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+		inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+		inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+		VkViewport viewport = {}; // viewport extents
+		viewport.x = 0.0f;
+		viewport.y = 0.0f;
+		viewport.width = static_cast<float>(swapChainExtent.width);
+		viewport.height = static_cast<float>(swapChainExtent.height);
+		viewport.minDepth = 0.0f;
+		viewport.maxDepth = 1.0f;
+
+		VkRect2D scissor = {}; // what to draw in the viewport
+		scissor.offset = { 0,0 };
+		scissor.extent = swapChainExtent;
+
+		VkPipelineViewportStateCreateInfo viewportState = {};
+		viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+		viewportState.viewportCount = 1;
+		viewportState.pViewports = &viewport;
+		viewportState.scissorCount = 1;
+		viewportState.pScissors = &scissor;
+			
+		VkPipelineRasterizationStateCreateInfo rasterizer = {};
+		rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+		rasterizer.depthClampEnable = VK_FALSE;			// T: clamps fragments to near/far plane. F: Clips fragments beyond plane
+		rasterizer.rasterizerDiscardEnable = VK_FALSE;	// T: disables output to framebuffer. F: output goes to framebuffer
+		rasterizer.polygonMode = VK_POLYGON_MODE_FILL; // how fragments are generated from geometry
+		rasterizer.lineWidth = 1.0f; // thickness of lines in terms of fragment count, >1 requires wideLines GPU Feature
+		rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+		rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE; // vertex order
+
+		// can be used for shadow mapping
+		rasterizer.depthBiasEnable = VK_FALSE;
+		rasterizer.depthBiasConstantFactor = 0.0f; // optional
+		rasterizer.depthBiasClamp = 0.0f; // optional
+		rasterizer.depthBiasSlopeFactor = 0.0f; // optional
+
+
 
 		vkDestroyShaderModule(device, vertShaderModule, allocnullptr);
 		vkDestroyShaderModule(device, fragShaderModule, allocnullptr);
