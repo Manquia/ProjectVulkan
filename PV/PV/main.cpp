@@ -835,8 +835,6 @@ private:
 		}
 	}
 
-
-
 	std::string GetDeviceName(VkPhysicalDevice device)
 	{
 		// Base Sevice Suitability checks
