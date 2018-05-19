@@ -127,9 +127,11 @@ private:
 	QueueFamilyIndices selectedQueueFamily;
 	float queuePriority = 1.0f;
 
+	VkRenderPass renderPass;
 	// will reference this later, will probably make a special GraphicsPipeline holder which holds onto different references 
 	// and other details on a per graphics Pipeline basis
 	VkPipelineLayout pipelineLayout;
+	VkPipeline graphicsPipeline;
 
 	std::vector<const char*> validationLayers =
 	{
@@ -506,12 +508,48 @@ private:
 	}
 	void createRenderPass()
 	{
+		VkAttachmentDescription colorAttachment = {};
+		colorAttachment.format = swapChainImageFormat;
+		colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT; // used for multi-sampling
 
+		// apply to Color and depth data
+		colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+		colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+		// apply to stencil data ONLY
+		colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		// don't care about initial state, going to clear before drawing
+		colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		// final layout should be ready for the swap chain to present
+		colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+		// subpasses reference Color attachments by index
+		// If we wanted to  add another color to our fragment shader
+		// we would add another colorAttachementReference to the subpass.
+		VkAttachmentReference colorAttachmentRef = {};
+		colorAttachmentRef.attachment = 0;
+		colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+		// a render pass can have 1 or more sub passes. These can be used for
+		// many different processes such a post-processing which has mulitple sub-passes.
+		VkSubpassDescription subpass = {};
+		subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+		subpass.colorAttachmentCount = 1;
+		subpass.pColorAttachments = &colorAttachmentRef;
+
+		VkRenderPassCreateInfo renderPassInfo = {};
+		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+		renderPassInfo.attachmentCount = 1;
+		renderPassInfo.pAttachments = &colorAttachment;
+		renderPassInfo.subpassCount = 1;
+		renderPassInfo.pSubpasses = &subpass;
+
+		PV_VK_RUN(vkCreateRenderPass(device, &renderPassInfo, allocnullptr, &renderPass));
 	}
 	void createGraphicsPipeline()
 	{
-		auto vertShaderCode = readBinaryFile("../SPV/vert.spv"); //@Speed
-		auto fragShaderCode = readBinaryFile("../SPV/frag.spv"); //@Speed
+		auto vertShaderCode = readBinaryFile("../SPV/vert.spv"); //@Speed copy
+		auto fragShaderCode = readBinaryFile("../SPV/frag.spv"); //@Speed copy
 
 		VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
 		VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
@@ -661,10 +699,42 @@ private:
 
 		PV_VK_RUN(vkCreatePipelineLayout(device, &pipelineLayoutInfo, allocnullptr, &pipelineLayout));
 
+		// Create Grpahics Pipeline
+		VkGraphicsPipelineCreateInfo pipelineInfo = {};
+		pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+
+		// vertext and fragment stages
+		pipelineInfo.stageCount = 2;
+		pipelineInfo.pStages = shaderStages;
+
+		// fixed function state
+		pipelineInfo.pVertexInputState = &vertexInputInfo;
+		pipelineInfo.pInputAssemblyState = &inputAssembly;
+		pipelineInfo.pViewportState = &viewportState;
+		pipelineInfo.pRasterizationState = &rasterizer;
+		pipelineInfo.pMultisampleState = &multisampling;
+		pipelineInfo.pDepthStencilState = nullptr;		// Optional
+		pipelineInfo.pColorBlendState = &colorBlending;
+		pipelineInfo.pDynamicState = nullptr;			// Optional
+		
+		// pipeline layout
+		pipelineInfo.layout = pipelineLayout;
+		// render pass and index of subpass
+		pipelineInfo.renderPass = renderPass;
+		pipelineInfo.subpass = 0;
+		// we can inheret from a simular base pipeline to make the creation faster in some cases.
+		// Probably will use this when we get mulitple graphics pipelines and want to modify/resue one...
+		// only used if VK_PIPELINE_CREATE_DERIVATIVE_BIT flag is set in flags
+		pipelineInfo.basePipelineHandle = VK_NULL_HANDLE; // Optional
+		pipelineInfo.basePipelineIndex = -1; // Optional
+
+		// @SPEED PipelineCache
+		vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, allocnullptr, &graphicsPipeline);
 
 		vkDestroyShaderModule(device, vertShaderModule, allocnullptr);
 		vkDestroyShaderModule(device, fragShaderModule, allocnullptr);
 	}
+
 	// Helper functions
 	bool isDeviceSuitable(VkPhysicalDevice device)
 	{
@@ -1003,10 +1073,14 @@ private:
 	{
 		// vulkan cleanup
 		{
-			// Cleanup empty PipelineLayout
+			// destroy graphics Pipeline
+			vkDestroyPipeline(device, graphicsPipeline, allocnullptr);
+			// Cleanup  PipelineLayout
 			vkDestroyPipelineLayout(device, pipelineLayout, allocnullptr);
+			// clenaup renderPass object
+			vkDestroyRenderPass(device, renderPass, allocnullptr);
 
-			// cleanup anyu imageviews connected to the swap chain
+			// cleanup any imageviews connected to the swap chain
 			for (auto imageView : swapChainImageViews)
 			{
 				vkDestroyImageView(device, imageView, allocnullptr);
