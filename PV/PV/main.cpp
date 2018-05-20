@@ -826,7 +826,7 @@ private:
 		PV_VK_RUN(vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()));
 
 		// @FUN, make opacity less than 1.0f and see what happens... Blur effect?
-		const VkClearValue clearColor = { 0.0f, 0.0f, 0.0f, 1.0f };
+		const VkClearValue clearColor = { 0.07f, 0.08f, 0.12f, 1.0f };
 
 		for (size_t i = 0; i < commandBuffers.size(); ++i)
 		{
@@ -961,7 +961,7 @@ private:
 		// minImageExtent and maxImageExtent
 		if (capabilities.currentExtent.width == std::numeric_limits<uint32_t>::max())
 		{
-			VkExtent2D actualExtent = { pvWindowWidth, pvWindowHeight };
+			VkExtent2D actualExtent = { static_cast<uint32_t>(pvWindowWidth), static_cast<uint32_t>(pvWindowHeight) };
 
 			actualExtent.width = std::max(capabilities.minImageExtent.width, std::min(capabilities.maxImageExtent.width, actualExtent.width));
 			actualExtent.height = std::max(capabilities.minImageExtent.height, std::min(capabilities.maxImageExtent.height, actualExtent.height));
@@ -1228,7 +1228,7 @@ private:
 		uint32_t imageIndex = -1;
 
 		VkResult res;
-		do // @TODO remove do while?
+		do
 		{
 			// using maxInt64 for timeout disables timeout... @SPEED use a fence?? May not be a problem b/c
 			// we are tripple buffered so there should alwasy be a frame ready to be grabbed and rendered too
@@ -1237,7 +1237,7 @@ private:
 			if (VK_ERROR_OUT_OF_DATE_KHR == res)
 			{
 				recreateSwapChain();
-				return; // @BUG maybe use return (want continue), we may need to poll GLFW for events, not sure if this will work.
+				continue;
 			}
 
 			// suboptimal and success are both viable success states
@@ -1245,7 +1245,6 @@ private:
 			{
 				throw std::runtime_error("failed to acquire swap chain image!");
 			}
-
 		} while (false);
 
 
@@ -1298,8 +1297,6 @@ private:
 		{
 			throw std::runtime_error("failed to present swap chain image. Code: " + std::to_string(res));
 		}
-
-		vkQueueWaitIdle(presentQueue); // @TODO remove, not needed probably
 	}
 
 #pragma region Cleanup
@@ -1388,8 +1385,6 @@ private:
 #pragma endregion
 };
 
-#
-
 #pragma region ErrorHandling
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
@@ -1423,9 +1418,6 @@ int main() {
 		std::cin >> input;
 		return EXIT_FAILURE;
 	}
-
-	int input;
-	std::cin >> input;
 	return EXIT_SUCCESS;
 }
 
