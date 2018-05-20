@@ -9,6 +9,7 @@
 #include <vector>
 #include <set>
 #include <algorithm> // std::min,max
+#include <assert.h>
 
 #include "Misc.hpp"
 
@@ -123,6 +124,7 @@ private:
 	VkFormat swapChainImageFormat;
 	VkExtent2D swapChainExtent;
 	std::vector<VkImageView> swapChainImageViews;
+	std::vector<VkFramebuffer> swapChainFramebuffers;
 
 	QueueFamilyIndices selectedQueueFamily;
 	float queuePriority = 1.0f;
@@ -132,6 +134,11 @@ private:
 	// and other details on a per graphics Pipeline basis
 	VkPipelineLayout pipelineLayout;
 	VkPipeline graphicsPipeline;
+	VkCommandPool commandPool;
+	std::vector<VkCommandBuffer> commandBuffers;
+
+	VkSemaphore imageAvailableSemaphore;
+	VkSemaphore renderFinishedSemaphore;
 
 	std::vector<const char*> validationLayers =
 	{
@@ -175,6 +182,30 @@ private:
 		createSwapChainImageViews();
 		createRenderPass();
 		createGraphicsPipeline();
+		createFramebuffers();
+		createCommandPool();
+		createCommandBuffers();
+		createSemaphores();
+	}
+
+	// requires that the logical device be initialized
+	// call for things like window resize
+	void recreateSwapChain()
+	{
+		// wait till device is idel before changing stuff
+		// @Multi-threaded, this may require a mutex or jobs system flag
+		// at some point to work with multiple threads
+		vkDeviceWaitIdle(device);
+
+		// clean up old swap chain
+		cleanupSwapChain();
+
+		createSwapChain();
+		createSwapChainImageViews();
+		createRenderPass();
+		createGraphicsPipeline();
+		createFramebuffers();
+		createCommandBuffers();
 	}
 
 	void createInstance()
@@ -537,12 +568,24 @@ private:
 		subpass.colorAttachmentCount = 1;
 		subpass.pColorAttachments = &colorAttachmentRef;
 
+		// Makes the render pass wait for VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BUT
+		// to be finished.. We need to wait for the swap chain to finish reading from the image
+		// before we can access it.
+		VkSubpassDependency dependency = {};
+		dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+		dependency.dstSubpass = 0;
+		dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+		dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
 		VkRenderPassCreateInfo renderPassInfo = {};
 		renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
 		renderPassInfo.attachmentCount = 1;
 		renderPassInfo.pAttachments = &colorAttachment;
 		renderPassInfo.subpassCount = 1;
 		renderPassInfo.pSubpasses = &subpass;
+		renderPassInfo.dependencyCount = 1;
+		renderPassInfo.pDependencies = &dependency;
+
 
 		PV_VK_RUN(vkCreateRenderPass(device, &renderPassInfo, allocnullptr, &renderPass));
 	}
@@ -734,7 +777,103 @@ private:
 		vkDestroyShaderModule(device, vertShaderModule, allocnullptr);
 		vkDestroyShaderModule(device, fragShaderModule, allocnullptr);
 	}
+	void createFramebuffers()
+	{
+		// we want a frame buffer per swap chain image view
+		swapChainFramebuffers.resize(swapChainImageViews.size());
 
+		// make a framebuffer per swapChainImage/swapChainImageView
+		for (size_t i = 0; i < swapChainImageViews.size(); i++) {
+			VkImageView attachments[] = {
+				swapChainImageViews[i]
+			};
+
+			VkFramebufferCreateInfo framebufferInfo = {};
+			framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+			framebufferInfo.renderPass = renderPass;
+			framebufferInfo.attachmentCount = 1;
+			// image views into the frame buffer. Only 1 for now
+			framebufferInfo.pAttachments = attachments;
+			framebufferInfo.width = swapChainExtent.width;
+			framebufferInfo.height = swapChainExtent.height;
+			framebufferInfo.layers = 1;
+
+			PV_VK_RUN(vkCreateFramebuffer(device, &framebufferInfo, nullptr, &swapChainFramebuffers[i]));
+		}
+
+	}
+	void createCommandPool()
+	{
+		QueueFamilyIndices queueFamilyIndicies = findQueueFamilies(physicalDevice, PV_VK_QUEUE_FLAGS);
+
+		VkCommandPoolCreateInfo poolInfo = {};
+		poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+		poolInfo.queueFamilyIndex = queueFamilyIndicies.graphicsFamily;
+		poolInfo.flags = 0; // Optional
+
+		PV_VK_RUN(vkCreateCommandPool(device, &poolInfo, allocnullptr, &commandPool));
+	}
+	void createCommandBuffers()
+	{
+		commandBuffers.resize(swapChainFramebuffers.size());
+
+		VkCommandBufferAllocateInfo allocInfo = {};
+		allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		allocInfo.commandPool = commandPool;
+		allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY; // secondary can be called from primary CBs
+		allocInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.size());
+
+		PV_VK_RUN(vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()));
+
+		// @FUN, make opacity less than 1.0f and see what happens... Blur effect?
+		const VkClearValue clearColor = { 0.0f, 0.0f, 0.0f, 1.0f };
+
+		for (size_t i = 0; i < commandBuffers.size(); ++i)
+		{
+			VkCommandBufferBeginInfo beginInfo = {};
+			beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+			beginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+			beginInfo.pInheritanceInfo = nullptr; // Optional, for secondary command buffers
+			
+			PV_VK_RUN(vkBeginCommandBuffer(commandBuffers[i], &beginInfo));
+
+			VkRenderPassBeginInfo renderPassInfo = {};
+			renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+			// setup frame buffer data
+			renderPassInfo.renderPass = renderPass;
+			renderPassInfo.framebuffer = swapChainFramebuffers[i];
+			renderPassInfo.renderArea.offset = {0,0};
+			renderPassInfo.renderArea.extent = swapChainExtent;
+			// Set Clear Color
+			renderPassInfo.clearValueCount = 1;
+			renderPassInfo.pClearValues = &clearColor;
+
+			// begin render pass!
+			vkCmdBeginRenderPass(commandBuffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+			// bind the graphics pipeline to the command buffer!
+			vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
+
+			// @TODO LOTS OF STUFF HERE!!!
+			// draw triangle!!!
+			vkCmdDraw(commandBuffers[i], 3, 1, 0, 0);
+
+			// end the render pass
+			vkCmdEndRenderPass(commandBuffers[i]);
+			// end the command buffer, hopefully everythign worked...
+			PV_VK_RUN(vkEndCommandBuffer(commandBuffers[i]));
+		}
+
+
+	}
+	void createSemaphores()
+	{
+		VkSemaphoreCreateInfo semaphoreInfo = {};
+		semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
+
+		PV_VK_RUN(vkCreateSemaphore(device, &semaphoreInfo, allocnullptr, &imageAvailableSemaphore));
+		PV_VK_RUN(vkCreateSemaphore(device, &semaphoreInfo, allocnullptr, &renderFinishedSemaphore));
+	}
 	// Helper functions
 	bool isDeviceSuitable(VkPhysicalDevice device)
 	{
@@ -1062,15 +1201,91 @@ private:
 		while (glfwWindowShouldClose(pvwindow) == false)
 		{
 			glfwPollEvents();
+			drawFrame();
 		}
+
+		// wait for the device to finish so that we can clean it up properly!
+		vkDeviceWaitIdle(device);
 	}
 
+
+	void drawFrame()
+	{
+		// @ TODO, UPDATE THE PROGRAM/GAME the rest of the stuff goes before here!
+
+		// @TODO GAME!!
+		// @TODO GAME!!
+		// @TODO GAME!!
+
+
+		// Should do this once everything else is setup in our world/graphics pipeline
+		vkQueueWaitIdle(presentQueue);
+
+		// STEP 1
+		// aquire an image from the swap chain
+		uint32_t imageIndex = -1;
+		// using maxInt64 for timeout disables timeout... @SPEED use a fence?? May not be a problem b/c
+		// we are tripple buffered so there should alwasy be a frame ready to be grabbed and rendered too
+		vkAcquireNextImageKHR(device, swapChain, std::numeric_limits<uint64_t>::max(), imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+		
+		
+		// STEP 2
+		// execute the command buffers with an image attachment in the framebuffer
+		VkSubmitInfo submitInfo = {};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+
+		VkSemaphore waitSemaphores[] = { imageAvailableSemaphore };
+		VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
+
+		// wait for semaphore to execute!
+		submitInfo.waitSemaphoreCount = 1;
+		submitInfo.pWaitSemaphores = waitSemaphores;
+		submitInfo.pWaitDstStageMask = waitStages;
+
+		// command buffers to execute
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
+
+		// Once finished with command buffer, trigger this semaphore
+		VkSemaphore signalSemaphores[] = { renderFinishedSemaphore };
+		submitInfo.signalSemaphoreCount = 1;
+		submitInfo.pSignalSemaphores = signalSemaphores;
+
+		PV_VK_RUN(vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE));
+
+		// STEP 3
+		// return the image to the swap chian for presentation
+		VkSwapchainKHR swapChains[] = { swapChain };
+
+		VkPresentInfoKHR presentInfo = {};
+		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+		presentInfo.waitSemaphoreCount = 1;
+		presentInfo.pWaitSemaphores = signalSemaphores; // end of rending/finishing all the command buffers
+		presentInfo.swapchainCount = 1;
+		presentInfo.pSwapchains = swapChains;
+		presentInfo.pImageIndices = &imageIndex;
+		presentInfo.pResults = nullptr; // Optional, array of results for each swap chain we present into
+
+		// Present the frame!
+		vkQueuePresentKHR(presentQueue, &presentInfo);
+	}
 
 #pragma region Cleanup
 	void cleanup() 
 	{
 		// vulkan cleanup
 		{
+			// clean up semaphores
+			vkDestroySemaphore(device, imageAvailableSemaphore, allocnullptr);
+			vkDestroySemaphore(device, renderFinishedSemaphore, allocnullptr);
+
+			// clean up command pool
+			vkDestroyCommandPool(device, commandPool, allocnullptr);
+			// cleanup framebuffer
+			for (auto framebuffer : swapChainFramebuffers)
+			{
+				vkDestroyFramebuffer(device, framebuffer, allocnullptr);
+			}
 			// destroy graphics Pipeline
 			vkDestroyPipeline(device, graphicsPipeline, allocnullptr);
 			// Cleanup  PipelineLayout
@@ -1111,6 +1326,10 @@ private:
 		}
 	}
 
+	void cleanupSwapChain()
+	{
+
+	}
 	void DestroyDebugReportCallbackEXT()
 	{
 		{
@@ -1160,8 +1379,8 @@ int main() {
 		return EXIT_FAILURE;
 	}
 
-	//int input;
-	//std::cin >> input;
+	int input;
+	std::cin >> input;
 	return EXIT_SUCCESS;
 }
 
