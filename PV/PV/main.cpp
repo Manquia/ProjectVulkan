@@ -86,8 +86,6 @@ private:
 
 #pragma region Constants
 
-	const uint32_t PV_WINDOW_WIDTH = 800;
-	const uint32_t PV_WINDOW_HEIGHT = 600;
 	const char* WINDOW_NAME = "GAM 400 Independent Study - Vulkan Renderer - Micah Rust";
 	const char* APPLICATION_NAME = WINDOW_NAME;
 	const char* ENGINE_NAME = APPLICATION_NAME;
@@ -109,7 +107,9 @@ private:
 
 	// Data
 #pragma region Data
-	GLFWwindow *pvwindow;
+	GLFWwindow *pvWindow;
+	int pvWindowWidth = 800;  // starting values
+	int pvWindowHeight = 600; // starting values
 
 	VkInstance pvinstance;
 	VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
@@ -159,15 +159,15 @@ private:
 	// Init GLFW window
 	void initWindow() {
 		
-		pvwindow = nullptr;
+		pvWindow = nullptr;
 		// initialize GLFW
 		glfwInit();
 		// create without OpenGL context
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 		// disable window resizing
-		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+		glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 		//create the GLFW window
-		pvwindow = glfwCreateWindow(PV_WINDOW_WIDTH, PV_WINDOW_HEIGHT, WINDOW_NAME, nullptr, nullptr);
+		pvWindow = glfwCreateWindow(pvWindowWidth, pvWindowHeight, WINDOW_NAME, nullptr, nullptr);
 		
 	}
 	// init Vulkan
@@ -307,7 +307,7 @@ private:
 		// for more details
 
 		// let glfw handle surface creation! yeah!
-		PV_VK_RUN(glfwCreateWindowSurface(pvinstance, pvwindow, allocnullptr, &surface));
+		PV_VK_RUN(glfwCreateWindowSurface(pvinstance, pvWindow, allocnullptr, &surface));
 	}
 	void pickPhysicalDevice()
 	{
@@ -961,7 +961,7 @@ private:
 		// minImageExtent and maxImageExtent
 		if (capabilities.currentExtent.width == std::numeric_limits<uint32_t>::max())
 		{
-			VkExtent2D actualExtent = { PV_WINDOW_WIDTH, PV_WINDOW_HEIGHT };
+			VkExtent2D actualExtent = { pvWindowWidth, pvWindowHeight };
 
 			actualExtent.width = std::max(capabilities.minImageExtent.width, std::min(capabilities.maxImageExtent.width, actualExtent.width));
 			actualExtent.height = std::max(capabilities.minImageExtent.height, std::min(capabilities.maxImageExtent.height, actualExtent.height));
@@ -1198,9 +1198,11 @@ private:
 
 	void runLoop() 
 	{
-		while (glfwWindowShouldClose(pvwindow) == false)
+		while (glfwWindowShouldClose(pvWindow) == false)
 		{
+
 			glfwPollEvents();
+			glfwGetWindowSize(this->pvWindow, &pvWindowWidth, &pvWindowHeight);
 			drawFrame();
 		}
 
@@ -1224,11 +1226,29 @@ private:
 		// STEP 1
 		// aquire an image from the swap chain
 		uint32_t imageIndex = -1;
-		// using maxInt64 for timeout disables timeout... @SPEED use a fence?? May not be a problem b/c
-		// we are tripple buffered so there should alwasy be a frame ready to be grabbed and rendered too
-		vkAcquireNextImageKHR(device, swapChain, std::numeric_limits<uint64_t>::max(), imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
-		
-		
+
+		VkResult res;
+		do // @TODO remove do while?
+		{
+			// using maxInt64 for timeout disables timeout... @SPEED use a fence?? May not be a problem b/c
+			// we are tripple buffered so there should alwasy be a frame ready to be grabbed and rendered too
+			res = vkAcquireNextImageKHR(device, swapChain, std::numeric_limits<uint64_t>::max(), imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
+
+			if (VK_ERROR_OUT_OF_DATE_KHR == res)
+			{
+				recreateSwapChain();
+				return; // @BUG maybe use return (want continue), we may need to poll GLFW for events, not sure if this will work.
+			}
+
+			// suboptimal and success are both viable success states
+			if (VK_SUBOPTIMAL_KHR != res && VK_SUCCESS != res)
+			{
+				throw std::runtime_error("failed to acquire swap chain image!");
+			}
+
+		} while (false);
+
+
 		// STEP 2
 		// execute the command buffers with an image attachment in the framebuffer
 		VkSubmitInfo submitInfo = {};
@@ -1266,8 +1286,20 @@ private:
 		presentInfo.pImageIndices = &imageIndex;
 		presentInfo.pResults = nullptr; // Optional, array of results for each swap chain we present into
 
+
 		// Present the frame!
-		vkQueuePresentKHR(presentQueue, &presentInfo);
+		res = vkQueuePresentKHR(presentQueue, &presentInfo);
+		// if our swapChain is out of date OR suboptimal, recreate the swap chain
+		if (VK_ERROR_OUT_OF_DATE_KHR == res || VK_SUBOPTIMAL_KHR == res)
+		{
+			recreateSwapChain();
+		}
+		else if (VK_SUCCESS != res)
+		{
+			throw std::runtime_error("failed to present swap chain image. Code: " + std::to_string(res));
+		}
+
+		vkQueueWaitIdle(presentQueue); // @TODO remove, not needed probably
 	}
 
 #pragma region Cleanup
@@ -1275,41 +1307,22 @@ private:
 	{
 		// vulkan cleanup
 		{
+			// cleanup all resources related to the swap chain
+			cleanupSwapChain();
+
 			// clean up semaphores
 			vkDestroySemaphore(device, imageAvailableSemaphore, allocnullptr);
 			vkDestroySemaphore(device, renderFinishedSemaphore, allocnullptr);
 
 			// clean up command pool
 			vkDestroyCommandPool(device, commandPool, allocnullptr);
-			// cleanup framebuffer
-			for (auto framebuffer : swapChainFramebuffers)
-			{
-				vkDestroyFramebuffer(device, framebuffer, allocnullptr);
-			}
-			// destroy graphics Pipeline
-			vkDestroyPipeline(device, graphicsPipeline, allocnullptr);
-			// Cleanup  PipelineLayout
-			vkDestroyPipelineLayout(device, pipelineLayout, allocnullptr);
-			// clenaup renderPass object
-			vkDestroyRenderPass(device, renderPass, allocnullptr);
-
-			// cleanup any imageviews connected to the swap chain
-			for (auto imageView : swapChainImageViews)
-			{
-				vkDestroyImageView(device, imageView, allocnullptr);
-			}
-
-
-			// destroy swap chain
-			vkDestroySwapchainKHR(device, swapChain, nullptr);
-			swapChainImages.clear();
 
 			// destroy logical device
 			vkDestroyDevice(device, allocnullptr);
 
 			if (enableValidationLayers)
 			{
-				DestroyDebugReportCallbackEXT();
+				DestroyDebugReportCallbackEXT(pvinstance, this->debugCallbackExt, allocnullptr);
 			}
 
 			vkDestroySurfaceKHR(pvinstance, surface, allocnullptr);
@@ -1319,31 +1332,63 @@ private:
 		// GLFW Cleanup
 		{
 			// destroy GLFW window
-			glfwDestroyWindow(pvwindow);
-			pvwindow = nullptr;
+			glfwDestroyWindow(pvWindow);
+			pvWindow = nullptr;
 			// close down glfw
 			glfwTerminate();
+		}
+	}
+	static void DestroyDebugReportCallbackEXT(VkInstance instance, VkDebugReportCallbackEXT callback, const VkAllocationCallbacks* pAllocator)
+	{
+		{
+			auto func = (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT");
+			if (func == nullptr)
+			{
+				throw std::runtime_error("failed to load vkDestroyDebugReportCallbackEXT extension function in cleanup");
+			}
+			func(instance, callback, pAllocator);
 		}
 	}
 
 	void cleanupSwapChain()
 	{
-
-	}
-	void DestroyDebugReportCallbackEXT()
-	{
+		// cleanup framebuffer
+		for (auto framebuffer : swapChainFramebuffers)
 		{
-			auto func = (PFN_vkDestroyDebugReportCallbackEXT)vkGetInstanceProcAddr(pvinstance, "vkDestroyDebugReportCallbackEXT");
-			if (func == nullptr)
-			{
-				throw std::runtime_error("failed to load vkDestroyDebugReportCallbackEXT extension function in cleanup");
-			}
-			func(pvinstance, debugCallbackExt, allocnullptr);
+			vkDestroyFramebuffer(device, framebuffer, allocnullptr);
 		}
+		swapChainFramebuffers.clear();
+
+		// destroy the command buffers for every swap chain
+		vkFreeCommandBuffers(device, commandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
+		commandBuffers.clear();
+
+		// destroy graphics Pipeline
+		vkDestroyPipeline(device, graphicsPipeline, allocnullptr);
+		// Cleanup  PipelineLayout
+		vkDestroyPipelineLayout(device, pipelineLayout, allocnullptr);
+		// clenaup renderPass object
+		vkDestroyRenderPass(device, renderPass, allocnullptr);
+
+		// cleanup any imageviews connected to the swap chain
+		for (auto imageView : swapChainImageViews)
+		{
+			vkDestroyImageView(device, imageView, allocnullptr);
+		}
+		swapChainImageViews.clear();
+
+
+		// destroy swap chain
+		vkDestroySwapchainKHR(device, swapChain, nullptr);
+		swapChainImages.clear();
+		
 	}
+	
 
 #pragma endregion
 };
+
+#
 
 #pragma region ErrorHandling
 
