@@ -843,7 +843,7 @@ private:
 			renderPassInfo.renderPass = renderPass;
 			renderPassInfo.framebuffer = swapChainFramebuffers[i];
 			renderPassInfo.renderArea.offset = {0,0};
-			renderPassInfo.renderArea.extent = swapChainExtent;
+			renderPassInfo.renderArea.extent = swapChainExtent; // @TODO, make it so that we dont' need to remake all our command buffers on resize
 			// Set Clear Color
 			renderPassInfo.clearValueCount = 1;
 			renderPassInfo.pClearValues = &clearColor;
@@ -1288,6 +1288,7 @@ private:
 
 		// Present the frame!
 		res = vkQueuePresentKHR(presentQueue, &presentInfo);
+
 		// if our swapChain is out of date OR suboptimal, recreate the swap chain
 		if (VK_ERROR_OUT_OF_DATE_KHR == res || VK_SUBOPTIMAL_KHR == res)
 		{
