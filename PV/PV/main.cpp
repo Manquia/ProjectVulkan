@@ -21,6 +21,7 @@ const std::vector<Vertex> vertices = {
     {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
     {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
 };
+const glm::vec3 triangleColor = { 1.0f, 1.0f, 1.0f };
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 	VkDebugReportFlagsEXT flags,
@@ -625,13 +626,16 @@ private:
 			vertShaderStageInfo, fragShaderStageInfo
 		};
 
+		// Get Bindings (shader data layout)
+		auto bindingDescription = Vertex::getBindingDescription();
+		auto attributeDescription = Vertex::getAttributeDescriptions();
 		// Setup vertex Input
 		VkPipelineVertexInputStateCreateInfo vertexInputInfo = {};
 		vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-		vertexInputInfo.vertexBindingDescriptionCount = 0; // @TODO @MESH LOADING
-		vertexInputInfo.pVertexBindingDescriptions = nullptr; // @TODO @MESH LOADING
-		vertexInputInfo.vertexAttributeDescriptionCount = 0; // @TODO @MESH LOADING
-		vertexInputInfo.pVertexAttributeDescriptions = nullptr; // @TODO @MESH LOADING
+		vertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(bindingDescription.size());
+		vertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributeDescription.size());
+		vertexInputInfo.pVertexBindingDescriptions = bindingDescription.data(); // binding 0 is per tri, binding 1 is per instance
+		vertexInputInfo.pVertexAttributeDescriptions = attributeDescription.data();
 
 		// setup Input Assembly (Draw Mode)
 		VkPipelineInputAssemblyStateCreateInfo inputAssembly = {};
@@ -739,6 +743,8 @@ private:
 		dynamicState.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
 		dynamicState.dynamicStateCount = 2;
 		dynamicState.pDynamicStates = dynamicStates;
+
+
 
 		// make an empty pipeline layout for now. This will later have things like worldViewMatrix
 		// and other constants which are passed on a per graphics pipeline basis
