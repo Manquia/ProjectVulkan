@@ -144,6 +144,11 @@ private:
 	// and other details on a per graphics Pipeline basis
 	VkPipelineLayout pipelineLayout;
 	VkPipeline graphicsPipeline;
+
+	// @TODO make this work with lots of models in loading or something
+	VkBuffer vertexBuffer;
+	VkDeviceMemory vertexBufferMemory;
+
 	VkCommandPool commandPool;
 	std::vector<VkCommandBuffer> commandBuffers;
 
@@ -194,6 +199,7 @@ private:
 		createGraphicsPipeline();
 		createFramebuffers();
 		createCommandPool();
+		createVertexBuffer();
 		createCommandBuffers();
 		createSemaphores();
 	}
@@ -828,6 +834,35 @@ private:
 
 		PV_VK_RUN(vkCreateCommandPool(device, &poolInfo, allocnullptr, &commandPool));
 	}
+
+	void createVertexBuffer()
+	{
+		VkBufferCreateInfo bufferInfo = {};
+		bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		bufferInfo.size = sizeof(vertices[0]) * vertices.size();
+		bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+		bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+		PV_VK_RUN(vkCreateBuffer(device, &bufferInfo, allocnullptr, &vertexBuffer));
+
+		VkMemoryRequirements bufferMemProperties;
+		// The buffer size may differ from the given creatInfo above
+		vkGetBufferMemoryRequirements(device, vertexBuffer, &bufferMemProperties);
+
+
+		VkMemoryAllocateInfo allocInfo = {};
+		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+		allocInfo.allocationSize = bufferMemProperties.size;
+		// memory we want needs to be visible and coherent for a vertex buffer
+		allocInfo.memoryTypeIndex = findMemoryType(bufferMemProperties.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+		
+		PV_VK_RUN(vkAllocateMemory(device, &allocInfo, allocnullptr, &vertexBufferMemory));
+
+		vkBindBufferMemory(device, vertexBuffer, vertexBufferMemory, 0);
+
+	}
+
+
 	void createCommandBuffers()
 	{
 		commandBuffers.resize(swapChainFramebuffers.size());
@@ -1209,6 +1244,28 @@ private:
 		PV_VK_RUN(vkCreateShaderModule(device, &createInfo, allocnullptr, &shaderModule));
 		return shaderModule;
 	}
+
+	uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
+	{
+		VkPhysicalDeviceMemoryProperties physicalMemProperties;
+		vkGetPhysicalDeviceMemoryProperties(physicalDevice, &physicalMemProperties);
+
+		for (uint32_t i = 0; i < physicalMemProperties.memoryTypeCount; ++i)
+		{
+			if (
+				typeFilter & (1 << i) &&
+				(physicalMemProperties.memoryTypes[i].propertyFlags & properties) == properties
+			   )
+			{
+				return i;
+			}
+		}
+
+		throw std::runtime_error("failed to find suitable memory type on selected GPU");
+
+
+		return -1U;
+	}
 #pragma endregion
 
 	void runLoop() 
@@ -1322,6 +1379,10 @@ private:
 		{
 			// cleanup all resources related to the swap chain
 			cleanupSwapChain();
+
+			// destroy vertex buffer @TODO make this for lots of items
+			vkDestroyBuffer(device, vertexBuffer, allocnullptr);
+			vkFreeMemory(device, vertexBufferMemory, allocnullptr);
 
 			// clean up semaphores
 			vkDestroySemaphore(device, imageAvailableSemaphore, allocnullptr);
