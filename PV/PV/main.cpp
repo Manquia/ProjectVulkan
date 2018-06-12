@@ -17,7 +17,7 @@
 
 
 const std::vector<Vertex> vertices = {
-    {{0.0f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+    {{0.0f, -0.5f}, {1.0f, 1.0f, 1.0f}},
     {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
     {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
 };
@@ -858,8 +858,29 @@ private:
 		
 		PV_VK_RUN(vkAllocateMemory(device, &allocInfo, allocnullptr, &vertexBufferMemory));
 
+		// bind the vertext buffer to the memory buffer. This may the thought of
+		// as assigning a pointer into the allocate buffer
 		vkBindBufferMemory(device, vertexBuffer, vertexBufferMemory, 0);
 
+		// map a ptr to gpu memory so we can put data into the vertex buffer, then unmap it
+		{
+			void* gpuMemPtr;
+			// VK_WHOLE_SIZE may be used to specified to map all of the memory in the buffer
+			// flags don't do anything as of vk1.1
+			vkMapMemory(device, vertexBufferMemory, 0, bufferInfo.size, 0, &gpuMemPtr);
+
+			// accessing data this way may not transfer/read everything over b/c of caching, usage of
+			// vkFlushMappedMemoryRanges(...) after writing to memory and
+			// vkInvalidateMappedMemoryRanges(...) while reading will fix this issue. 
+			// Alternativly: We can also just make sure the memory is VK_MEMORY_PROPERTY_HOST_COHERENT_BIT as
+			// we have done above when we chose the memoryTypeIndex
+
+			// @SPEED, usage of flush/invalidate may be faster instead of the memory bit
+			// Although this may not matter in the long run b/c of reasons...
+			memcpy(gpuMemPtr, vertices.data(), static_cast<size_t>(bufferInfo.size));
+			vkUnmapMemory(device, vertexBufferMemory);
+		}
+		
 	}
 
 
@@ -904,9 +925,17 @@ private:
 			// bind the graphics pipeline to the command buffer!
 			vkCmdBindPipeline(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
 
-			// @TODO LOTS OF STUFF HERE!!!
-			// draw triangle!!!
-			vkCmdDraw(commandBuffers[i], 3, 1, 0, 0);
+			const VkBuffer vertexbuffers[] = { vertexBuffer };
+			const VkDeviceSize offsets[] = { 0 };
+			const uint32_t vertexBufferCount = (sizeof(vertexbuffers) / sizeof(vertexbuffers[0]));
+			size_t bindingCounter = 0;
+			vkCmdBindVertexBuffers(commandBuffers[i], bindingCounter++, vertexBufferCount, vertexbuffers, offsets);
+
+			// @TODO
+			// Add more bindings here?
+
+
+			vkCmdDraw(commandBuffers[i], static_cast<uint32_t>(vertices.size()), 1, 0, 0);
 
 			// end the render pass
 			vkCmdEndRenderPass(commandBuffers[i]);
