@@ -837,50 +837,41 @@ private:
 
 	void createVertexBuffer()
 	{
+		VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+		createBuffer(
+			bufferSize,
+			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			vertexBuffer,
+			vertexBufferMemory);
+
+
+		void* gpuData;
+		vkMapMemory(device, vertexBufferMemory, 0, bufferSize, 0, &gpuData);
+		memcpy(gpuData, vertices.data(), static_cast<size_t>(bufferSize));
+		vkUnmapMemory(device, vertexBufferMemory);
+	}
+
+	void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemeory)
+	{
 		VkBufferCreateInfo bufferInfo = {};
 		bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-		bufferInfo.size = sizeof(vertices[0]) * vertices.size();
-		bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+		bufferInfo.size = size;
+		bufferInfo.usage = usage;
 		bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
-		PV_VK_RUN(vkCreateBuffer(device, &bufferInfo, allocnullptr, &vertexBuffer));
+		PV_VK_RUN(vkCreateBuffer(device, &bufferInfo, allocnullptr, &buffer));
 
-		VkMemoryRequirements bufferMemProperties;
-		// The buffer size may differ from the given creatInfo above
-		vkGetBufferMemoryRequirements(device, vertexBuffer, &bufferMemProperties);
-
+		VkMemoryRequirements memRequirements;
+		vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
 
 		VkMemoryAllocateInfo allocInfo = {};
 		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-		allocInfo.allocationSize = bufferMemProperties.size;
-		// memory we want needs to be visible and coherent for a vertex buffer
-		allocInfo.memoryTypeIndex = findMemoryType(bufferMemProperties.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-		
-		PV_VK_RUN(vkAllocateMemory(device, &allocInfo, allocnullptr, &vertexBufferMemory));
+		allocInfo.allocationSize = memRequirements.size;
+		allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, properties);
 
-		// bind the vertext buffer to the memory buffer. This may the thought of
-		// as assigning a pointer into the allocate buffer
-		vkBindBufferMemory(device, vertexBuffer, vertexBufferMemory, 0);
+		PV_VK_RUN(vkAllocateMemory(device, &allocInfo, allocnullptr, &bufferMemeory));
 
-		// map a ptr to gpu memory so we can put data into the vertex buffer, then unmap it
-		{
-			void* gpuMemPtr;
-			// VK_WHOLE_SIZE may be used to specified to map all of the memory in the buffer
-			// flags don't do anything as of vk1.1
-			vkMapMemory(device, vertexBufferMemory, 0, bufferInfo.size, 0, &gpuMemPtr);
-
-			// accessing data this way may not transfer/read everything over b/c of caching, usage of
-			// vkFlushMappedMemoryRanges(...) after writing to memory and
-			// vkInvalidateMappedMemoryRanges(...) while reading will fix this issue. 
-			// Alternativly: We can also just make sure the memory is VK_MEMORY_PROPERTY_HOST_COHERENT_BIT as
-			// we have done above when we chose the memoryTypeIndex
-
-			// @SPEED, usage of flush/invalidate may be faster instead of the memory bit
-			// Although this may not matter in the long run b/c of reasons...
-			memcpy(gpuMemPtr, vertices.data(), static_cast<size_t>(bufferInfo.size));
-			vkUnmapMemory(device, vertexBufferMemory);
-		}
-		
+		vkBindBufferMemory(device, buffer, bufferMemeory, 0);
 	}
 
 
@@ -1527,3 +1518,55 @@ int main() {
 	return EXIT_SUCCESS;
 }
 
+
+
+
+	// CPU -> GPU Memory Mapping Example
+	/*
+	void createVertexBuffer()
+	{
+		VkBufferCreateInfo bufferInfo = {};
+		bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		bufferInfo.size = sizeof(vertices[0]) * vertices.size();
+		bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+		bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+
+		PV_VK_RUN(vkCreateBuffer(device, &bufferInfo, allocnullptr, &vertexBuffer));
+
+		VkMemoryRequirements bufferMemProperties;
+		// The buffer size may differ from the given creatInfo above
+		vkGetBufferMemoryRequirements(device, vertexBuffer, &bufferMemProperties);
+
+
+		VkMemoryAllocateInfo allocInfo = {};
+		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+		allocInfo.allocationSize = bufferMemProperties.size;
+		// memory we want needs to be visible and coherent for a vertex buffer
+		allocInfo.memoryTypeIndex = findMemoryType(bufferMemProperties.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+		
+		PV_VK_RUN(vkAllocateMemory(device, &allocInfo, allocnullptr, &vertexBufferMemory));
+
+		// bind the vertext buffer to the memory buffer. This may the thought of
+		// as assigning a pointer into the allocate buffer
+		vkBindBufferMemory(device, vertexBuffer, vertexBufferMemory, 0);
+
+		// map a ptr to gpu memory so we can put data into the vertex buffer, then unmap it
+		{
+			void* gpuMemPtr;
+			// VK_WHOLE_SIZE may be used to specified to map all of the memory in the buffer
+			// flags don't do anything as of vk1.1
+			vkMapMemory(device, vertexBufferMemory, 0, bufferInfo.size, 0, &gpuMemPtr);
+
+			// accessing data this way may not transfer/read everything over b/c of caching, usage of
+			// vkFlushMappedMemoryRanges(...) after writing to memory and
+			// vkInvalidateMappedMemoryRanges(...) while reading will fix this issue. 
+			// Alternativly: We can also just make sure the memory is VK_MEMORY_PROPERTY_HOST_COHERENT_BIT as
+			// we have done above when we chose the memoryTypeIndex
+
+			// @SPEED, usage of flush/invalidate may be faster instead of the memory bit
+			// Although this may not matter in the long run b/c of reasons...
+			memcpy(gpuMemPtr, vertices.data(), static_cast<size_t>(bufferInfo.size));
+			vkUnmapMemory(device, vertexBufferMemory);
+		}
+	}
+	*/
