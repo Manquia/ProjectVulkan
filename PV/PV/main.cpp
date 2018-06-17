@@ -15,13 +15,18 @@
 #include <glm/glm.hpp> // Linear Algebra
 #include "Vertex.h"
 
-
 const std::vector<Vertex> vertices = {
-    {{0.0f, -0.5f}, {1.0f, 1.0f, 1.0f}},
-    {{0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}},
-    {{-0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}}
+    {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
+    {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
+    {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
+    {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
 };
-const glm::vec3 triangleColor = { 1.0f, 1.0f, 1.0f };
+// mesh must be < 65535 verticies
+// use uint32_t > 65535 verticies
+// Will require that our binding get changed
+const std::vector<uint16_t> indices = {
+	0, 1, 2, 2, 3, 0
+};
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 	VkDebugReportFlagsEXT flags,
@@ -148,6 +153,8 @@ private:
 	// @TODO make this work with lots of models in loading or something
 	VkBuffer vertexBuffer;
 	VkDeviceMemory vertexBufferMemory;
+	VkBuffer indexBuffer;
+	VkDeviceMemory indexBufferMemory;
 
 	VkCommandPool commandPool;
 	std::vector<VkCommandBuffer> commandBuffers;
@@ -200,6 +207,7 @@ private:
 		createFramebuffers();
 		createCommandPool();
 		createVertexBuffer();
+		createIndexBuffer();
 		createCommandBuffers();
 		createSemaphores();
 	}
@@ -867,7 +875,31 @@ private:
 		vkDestroyBuffer(device, stagingBuffer, allocnullptr);
 		vkFreeMemory(device, stagingBufferMemory, allocnullptr);
 	}
+	void createIndexBuffer()
+	{
+		VkDeviceSize bufferSize = sizeof(indices[0]) * indices.size();
 
+		// @SPEED treated as a temporary, this may we wasteful on startup
+		// so we could pool these and use them over and over again in some
+		// cases
+		VkBuffer stagingBuffer;
+		VkDeviceMemory stagingBufferMemory;
+		createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, stagingBuffer, stagingBufferMemory);
+
+		void* data;
+		vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &data);
+		memcpy(data, indices.data(), (size_t)bufferSize);
+		vkUnmapMemory(device, stagingBufferMemory);
+
+		createBuffer(bufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, indexBuffer, indexBufferMemory);
+
+		copyBuffer(stagingBuffer, indexBuffer, bufferSize);
+
+		// @Speed treated as temporary, this may be wasteful on startup
+		vkDestroyBuffer(device, stagingBuffer, nullptr);
+		vkFreeMemory(device, stagingBufferMemory, nullptr);
+	}
+	
 	void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemeory)
 	{
 		VkBufferCreateInfo bufferInfo = {};
@@ -992,11 +1024,11 @@ private:
 			size_t bindingCounter = 0;
 			vkCmdBindVertexBuffers(commandBuffers[i], bindingCounter++, vertexBufferCount, vertexbuffers, offsets);
 
-			// @TODO
-			// Add more bindings here?
+			// VK_INDEX_TYPE_UINT16 should be a field of the warpper since we don't need it for
+			// models which are less than 65000 verticies which should be most things, @TODO @Speed
+			vkCmdBindIndexBuffer(commandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT16);
 
-
-			vkCmdDraw(commandBuffers[i], static_cast<uint32_t>(vertices.size()), 1, 0, 0);
+			vkCmdDrawIndexed(commandBuffers[i], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
 			// end the render pass
 			vkCmdEndRenderPass(commandBuffers[i]);
@@ -1471,8 +1503,12 @@ private:
 			cleanupSwapChain();
 
 			// destroy vertex buffer @TODO make this for lots of items
+			vkDestroyBuffer(device, indexBuffer, allocnullptr);
+			vkFreeMemory(device, indexBufferMemory, allocnullptr);
+			// ..
 			vkDestroyBuffer(device, vertexBuffer, allocnullptr);
 			vkFreeMemory(device, vertexBufferMemory, allocnullptr);
+
 
 			// clean up semaphores
 			vkDestroySemaphore(device, imageAvailableSemaphore, allocnullptr);
