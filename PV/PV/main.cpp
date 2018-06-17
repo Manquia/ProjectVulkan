@@ -838,17 +838,34 @@ private:
 	void createVertexBuffer()
 	{
 		VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
+
+		// @SPEED treated as a temporary, this may we wasteful on startup
+		// so we could pool these and use them over and over again in some
+		// cases
+		VkBuffer stagingBuffer;
+		VkDeviceMemory stagingBufferMemory;
 		createBuffer(
 			bufferSize,
-			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			stagingBuffer, stagingBufferMemory);
+
+		void* gpuData;
+		vkMapMemory(device, stagingBufferMemory, 0, bufferSize, 0, &gpuData);
+		memcpy(gpuData, vertices.data(), static_cast<size_t>(bufferSize));
+		vkUnmapMemory(device, stagingBufferMemory);
+
+
+		createBuffer(
+			bufferSize,
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 			vertexBuffer,
 			vertexBufferMemory);
 
+		copyBuffer(stagingBuffer, vertexBuffer, bufferSize);
 
-		void* gpuData;
-		vkMapMemory(device, vertexBufferMemory, 0, bufferSize, 0, &gpuData);
-		memcpy(gpuData, vertices.data(), static_cast<size_t>(bufferSize));
-		vkUnmapMemory(device, vertexBufferMemory);
+		// @Speed treated as temporary, this may be wasteful on startup
+		vkDestroyBuffer(device, stagingBuffer, allocnullptr);
+		vkFreeMemory(device, stagingBufferMemory, allocnullptr);
 	}
 
 	void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemeory)
@@ -864,6 +881,9 @@ private:
 		VkMemoryRequirements memRequirements;
 		vkGetBufferMemoryRequirements(device, buffer, &memRequirements);
 
+		// The number of operations we can allocate memory on the GPU is very
+		// limited (<4k count). This is why we may need to use an allocator.
+		// Open Src Helper: https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator
 		VkMemoryAllocateInfo allocInfo = {};
 		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 		allocInfo.allocationSize = memRequirements.size;
@@ -874,6 +894,56 @@ private:
 		vkBindBufferMemory(device, buffer, bufferMemeory, 0);
 	}
 
+	// Buffer copy requires that we submit the command to copy through a command queue
+	void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
+	{
+		// @SPEED staging buffers are temporary, but may be faster
+		// if they were in a seperate commandPool for the short-lived nature they have
+		// use VK_COMMAND_POOL_CREATE_TRANSIENT_BIT if we ever do this.
+		// these different buffers and pools could then but used to move data onto the GPU
+		// @Staging Buffer
+		VkCommandBufferAllocateInfo allocInfo = {};
+		allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+		allocInfo.commandPool = commandPool;
+		allocInfo.commandBufferCount = 1;
+
+		VkCommandBuffer commandBuffer;
+		vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
+
+		VkCommandBufferBeginInfo beginInfo = {};
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+		vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+		VkBufferCopy copyRegion = {};
+		copyRegion.srcOffset = 0;
+		copyRegion.dstOffset = 0;
+		copyRegion.size = size;
+		vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
+
+		vkEndCommandBuffer(commandBuffer);
+
+		VkSubmitInfo submitInfo = {};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &commandBuffer;
+
+		// @SPEED @Resources. The graphics Queue is a superset of a transfer queue
+		// which can handle thsi sort of copy buffer operation. It may be better
+		// to make a seperate transferQueue in the furture to make this more clean
+		// and potentially gain some performance. See top of @Staging Buffer for
+		// some of the details to impliment this.
+		vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+
+		// @Speed we may also want to transfer mulitple buffers at once. This can
+		// be done using fences which would let us move many buffers at once
+		vkQueueWaitIdle(graphicsQueue);
+
+		// @SPEED see top of fun, this is a throw away command Buffer
+		vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
+	}
 
 	void createCommandBuffers()
 	{
