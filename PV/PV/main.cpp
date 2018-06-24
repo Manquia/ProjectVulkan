@@ -158,9 +158,13 @@ private:
 	float queuePriority = 1.0f;
 
 	VkRenderPass renderPass;
-	VkDescriptorSetLayout descriptorSetLayout;
 	VkPipelineLayout pipelineLayout;
 	VkPipeline graphicsPipeline;
+
+
+	VkDescriptorPool descriptorPool;
+	VkDescriptorSet  descriptorSet;
+	VkDescriptorSetLayout descriptorSetLayout;
 
 	// @TODO make this work with lots of models in loading or something
 	VkBuffer vertexBuffer;
@@ -226,6 +230,9 @@ private:
 		createVertexBuffer();
 		createIndexBuffer();
 		createUniformBuffer();
+
+		createDescriptorPool();
+		createDescriptorSet();
 
 		createCommandBuffers();
 		createSemaphores();
@@ -719,7 +726,7 @@ private:
 		rasterizer.polygonMode = VK_POLYGON_MODE_FILL; // how fragments are generated from geometry
 		rasterizer.lineWidth = 1.0f; // thickness of lines in terms of fragment count, >1 requires wideLines GPU Feature
 		rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-		rasterizer.frontFace = VK_FRONT_FACE_CLOCKWISE; // vertex order
+		rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE; // vertex order
 
 		// can be used for shadow mapping
 		rasterizer.depthBiasEnable = VK_FALSE;
@@ -1025,6 +1032,53 @@ private:
 		vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
 	}
 
+	void createDescriptorPool()
+	{
+		const VkDescriptorPoolSize poolSizes[] = 
+		{ 
+			// Type , Count
+			{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1},
+		};
+		
+		VkDescriptorPoolCreateInfo poolInfo = {};
+		poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+		poolInfo.poolSizeCount = sizeof(poolSizes[0])/sizeof(poolSizes);
+		poolInfo.pPoolSizes = poolSizes;
+		poolInfo.maxSets = 1; // @DESCRIPTORPOOLSIZE
+
+		PV_VK_RUN(vkCreateDescriptorPool(device, &poolInfo, allocnullptr, &descriptorPool));
+	}
+	void createDescriptorSet()
+	{
+		VkDescriptorSetLayout layouts[] = { descriptorSetLayout };
+		VkDescriptorSetAllocateInfo allocInfo = {};
+		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		allocInfo.descriptorPool = descriptorPool;
+		allocInfo.descriptorSetCount = 1;
+		allocInfo.pSetLayouts = layouts;
+
+		PV_VK_RUN(vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet));
+
+		VkDescriptorBufferInfo bufferInfo = {};
+		bufferInfo.buffer = uniformBuffer;
+		bufferInfo.offset = 0;
+		bufferInfo.range = sizeof(UniformBufferObject);
+
+		VkWriteDescriptorSet descWrite = {};
+		descWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		descWrite.dstSet = descriptorSet;
+		descWrite.dstBinding = 0;
+		descWrite.dstArrayElement = 0;
+
+		descWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		descWrite.descriptorCount = 1;
+
+		descWrite.pBufferInfo = &bufferInfo;
+		descWrite.pImageInfo = nullptr; // Optional
+		descWrite.pTexelBufferView = nullptr; // Optional
+		vkUpdateDescriptorSets(device, 1, &descWrite, 0, nullptr);
+	}
+
 	void createCommandBuffers()
 	{
 		commandBuffers.resize(swapChainFramebuffers.size());
@@ -1075,6 +1129,8 @@ private:
 			// VK_INDEX_TYPE_UINT16 should be a field of the warpper since we don't need it for
 			// models which are less than 65000 verticies which should be most things, @TODO @Speed
 			vkCmdBindIndexBuffer(commandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+
+			vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
 
 			vkCmdDrawIndexed(commandBuffers[i], static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
@@ -1453,7 +1509,7 @@ private:
 		vkDeviceWaitIdle(device);
 	}
 
-	const float fieldOfView = 69.0f;
+	const float fieldOfView = 45.0f;
 	void updateUniformBuffer()
 	{
 		// @TODO make this into a more robust time tracking system. @TODO @ROBUST
@@ -1464,7 +1520,7 @@ private:
 		// create Update UniformBufferObject
 		UniformBufferObject ubo = {};
 
-		ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 0.0f));
+		ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 		ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 		ubo.proj = glm::perspective(glm::radians(fieldOfView), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100.0f);
 		ubo.proj[1][1] *= -1.0f; // Invert Y coordinate for Vuklan, glm was made for OpenGL orginally
@@ -1573,6 +1629,8 @@ private:
 		{
 			// cleanup all resources related to the swap chain
 			cleanupSwapChain();
+
+			vkDestroyDescriptorPool(device, descriptorPool, allocnullptr);
 
 			// free buffers
 			{
