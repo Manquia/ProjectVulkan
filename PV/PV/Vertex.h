@@ -1,7 +1,7 @@
 #pragma once
 
 //
-// Pre-Includes required: Vulkan, glm
+// Pre-Includes required: Vulkan, glm/glm.hpp
 //
 #include <array>
 

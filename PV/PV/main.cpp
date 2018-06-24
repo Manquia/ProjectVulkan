@@ -12,8 +12,15 @@
 #include <assert.h>
 
 #include "Misc.hpp"
+
+// glm includes
+#define GLM_FORCE_RADIANS 
 #include <glm/glm.hpp> // Linear Algebra
-#include "Vertex.h"
+#include <glm/gtc/matrix_transform.hpp> // glm::perspective
+
+#include "Vertex.h" // had include dependencies
+
+#include <chrono>
 
 const std::vector<Vertex> vertices = {
     {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
@@ -28,6 +35,12 @@ const std::vector<uint16_t> indices = {
 	0, 1, 2, 2, 3, 0
 };
 
+struct UniformBufferObject
+{
+	glm::mat4 model;
+	glm::mat4 view;
+	glm::mat4 proj;
+};
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 	VkDebugReportFlagsEXT flags,
 	VkDebugReportObjectTypeEXT objType,
@@ -145,8 +158,7 @@ private:
 	float queuePriority = 1.0f;
 
 	VkRenderPass renderPass;
-	// will reference this later, will probably make a special GraphicsPipeline holder which holds onto different references 
-	// and other details on a per graphics Pipeline basis
+	VkDescriptorSetLayout descriptorSetLayout;
 	VkPipelineLayout pipelineLayout;
 	VkPipeline graphicsPipeline;
 
@@ -155,6 +167,8 @@ private:
 	VkDeviceMemory vertexBufferMemory;
 	VkBuffer indexBuffer;
 	VkDeviceMemory indexBufferMemory;
+	VkBuffer uniformBuffer;
+	VkDeviceMemory uniformBufferMemory;
 
 	VkCommandPool commandPool;
 	std::vector<VkCommandBuffer> commandBuffers;
@@ -203,15 +217,19 @@ private:
 		createSwapChain();
 		createSwapChainImageViews();
 		createRenderPass();
+		createDescriptorSetLayout();
 		createGraphicsPipeline();
 		createFramebuffers();
 		createCommandPool();
+
+		// make buffers
 		createVertexBuffer();
 		createIndexBuffer();
+		createUniformBuffer();
+
 		createCommandBuffers();
 		createSemaphores();
 	}
-
 	// requires that the logical device be initialized
 	// call for things like window resize
 	void recreateSwapChain()
@@ -613,6 +631,24 @@ private:
 
 		PV_VK_RUN(vkCreateRenderPass(device, &renderPassInfo, allocnullptr, &renderPass));
 	}
+
+	void createDescriptorSetLayout()
+	{
+		VkDescriptorSetLayoutBinding uboLayoutBinding = {};
+		uboLayoutBinding.binding = 0;
+		uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		uboLayoutBinding.descriptorCount = 1;
+		uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+		uboLayoutBinding.pImmutableSamplers = nullptr; // @TODO image samplers
+
+		VkDescriptorSetLayoutCreateInfo layoutInfo = {};
+		layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+		layoutInfo.bindingCount = 1;
+		layoutInfo.pBindings = &uboLayoutBinding;
+
+		PV_VK_RUN(vkCreateDescriptorSetLayout(device, &layoutInfo, allocnullptr, &descriptorSetLayout));
+	}
+
 	void createGraphicsPipeline()
 	{
 		auto vertShaderCode = readBinaryFile("../SPV/vert.spv"); //@Speed copy
@@ -764,8 +800,10 @@ private:
 		// and other constants which are passed on a per graphics pipeline basis
 		VkPipelineLayoutCreateInfo pipelineLayoutInfo = {};
 		pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-		pipelineLayoutInfo.setLayoutCount = 0; // Optional
-		pipelineLayoutInfo.pSetLayouts = nullptr; // Optional
+		// Uniform/Sampler bindings
+		pipelineLayoutInfo.setLayoutCount = 1;
+		pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
+		// Constant values bindings
 		pipelineLayoutInfo.pushConstantRangeCount = 0; // Optional
 		pipelineLayoutInfo.pPushConstantRanges = nullptr; // Optional
 
@@ -900,6 +938,16 @@ private:
 		vkFreeMemory(device, stagingBufferMemory, nullptr);
 	}
 	
+	void createUniformBuffer()
+	{
+		VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+		createBuffer(
+			bufferSize,
+			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			uniformBuffer,
+			uniformBufferMemory);
+	}
 	void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemeory)
 	{
 		VkBufferCreateInfo bufferInfo = {};
@@ -1397,6 +1445,7 @@ private:
 
 			glfwPollEvents();
 			glfwGetWindowSize(this->pvWindow, &pvWindowWidth, &pvWindowHeight);
+			updateUniformBuffer();
 			drawFrame();
 		}
 
@@ -1404,6 +1453,29 @@ private:
 		vkDeviceWaitIdle(device);
 	}
 
+	const float fieldOfView = 69.0f;
+	void updateUniformBuffer()
+	{
+		// @TODO make this into a more robust time tracking system. @TODO @ROBUST
+		static auto firstFrameOfProgram = std::chrono::high_resolution_clock::now();
+		auto currentTime = std::chrono::high_resolution_clock::now();
+		float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - firstFrameOfProgram).count();
+
+		// create Update UniformBufferObject
+		UniformBufferObject ubo = {};
+
+		ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 0.0f));
+		ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+		ubo.proj = glm::perspective(glm::radians(fieldOfView), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100.0f);
+		ubo.proj[1][1] *= -1.0f; // Invert Y coordinate for Vuklan, glm was made for OpenGL orginally
+
+		// move ubo into GPUs
+		void* gpuDataPtr;
+		vkMapMemory(device, uniformBufferMemory, 0, sizeof(ubo), 0, &gpuDataPtr);
+		memcpy(gpuDataPtr, &ubo, sizeof(ubo));
+		vkUnmapMemory(device, uniformBufferMemory);
+
+	}
 
 	void drawFrame()
 	{
@@ -1502,13 +1574,18 @@ private:
 			// cleanup all resources related to the swap chain
 			cleanupSwapChain();
 
-			// destroy vertex buffer @TODO make this for lots of items
-			vkDestroyBuffer(device, indexBuffer, allocnullptr);
-			vkFreeMemory(device, indexBufferMemory, allocnullptr);
-			// ..
-			vkDestroyBuffer(device, vertexBuffer, allocnullptr);
-			vkFreeMemory(device, vertexBufferMemory, allocnullptr);
+			// free buffers
+			{
+				vkDestroyDescriptorSetLayout(device, descriptorSetLayout, allocnullptr);
+				vkDestroyBuffer(device, uniformBuffer, allocnullptr);
+				vkFreeMemory(device, uniformBufferMemory, allocnullptr);
 
+				vkDestroyBuffer(device, indexBuffer, allocnullptr);
+				vkFreeMemory(device, indexBufferMemory, allocnullptr);
+				
+				vkDestroyBuffer(device, vertexBuffer, allocnullptr);
+				vkFreeMemory(device, vertexBufferMemory, allocnullptr);
+			}
 
 			// clean up semaphores
 			vkDestroySemaphore(device, imageAvailableSemaphore, allocnullptr);
