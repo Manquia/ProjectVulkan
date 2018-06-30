@@ -84,7 +84,7 @@
       <Optimization>Disabled</Optimization>
       <SDLCheck>false</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>C:\Users\Micah\Desktop\ProjectVulkan\Libraries\Vulkan\Include;C:\Users\Micah\Desktop\ProjectVulkan\Libraries\glm;C:\Users\Micah\Desktop\ProjectVulkan\Libraries\GLFW\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\Micah\Desktop\ProjectVulkan\Libraries\stb;C:\Users\Micah\Desktop\ProjectVulkan\Libraries\Vulkan\Include;C:\Users\Micah\Desktop\ProjectVulkan\Libraries\glm;C:\Users\Micah\Desktop\ProjectVulkan\Libraries\GLFW\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>C:\Users\Micah\Desktop\ProjectVulkan\Libraries\Vulkan\Lib;C:\Users\Micah\Desktop\ProjectVulkan\Libraries\GLFW\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
@@ -113,7 +113,7 @@
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>false</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>C:\Users\Micah\Desktop\ProjectVulkan\Libraries\Vulkan\Include;C:\Users\Micah\Desktop\ProjectVulkan\Libraries\glm;C:\Users\Micah\Desktop\ProjectVulkan\Libraries\GLFW\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>C:\Users\Micah\Desktop\ProjectVulkan\Libraries\stb;C:\Users\Micah\Desktop\ProjectVulkan\Libraries\Vulkan\Include;C:\Users\Micah\Desktop\ProjectVulkan\Libraries\glm;C:\Users\Micah\Desktop\ProjectVulkan\Libraries\GLFW\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>

@@ -12,6 +12,7 @@
 #include <assert.h>
 
 #include "Misc.hpp"
+#include "stb_image.h"
 
 // glm includes
 #define GLM_FORCE_RADIANS 
