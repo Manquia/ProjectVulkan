@@ -12,6 +12,7 @@
 #include <assert.h>
 
 #include "Misc.hpp"
+#define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
 // glm includes
@@ -226,6 +227,8 @@ private:
 		createGraphicsPipeline();
 		createFramebuffers();
 		createCommandPool();
+
+		createTextureImage();
 
 		// make buffers
 		createVertexBuffer();
@@ -888,6 +891,13 @@ private:
 
 		PV_VK_RUN(vkCreateCommandPool(device, &poolInfo, allocnullptr, &commandPool));
 	}
+
+	// uses command pool
+	void createTextureImage() 
+	{
+
+	}
+
 
 	void createVertexBuffer()
 	{
