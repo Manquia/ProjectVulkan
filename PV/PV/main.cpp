@@ -169,12 +169,13 @@ private:
 	VkDescriptorSetLayout descriptorSetLayout;
 
 	// @TODO make this work with lots of models in loading or somethingVkImage textureImage;
+	VkImageView textureImageView;
 	VkImage textureImage;
 	VkDeviceMemory textureImageMemory;
 
-
 	VkBuffer vertexBuffer;
 	VkDeviceMemory vertexBufferMemory;
+
 	VkBuffer indexBuffer;
 	VkDeviceMemory indexBufferMemory;
 
@@ -234,6 +235,7 @@ private:
 		createCommandPool();
 
 		createTextureImage();
+		createTextureImageView();
 
 		// make buffers
 		createVertexBuffer();
@@ -574,25 +576,7 @@ private:
 
 		for (size_t i = 0; i < swapChainImages.size(); ++i)
 		{
-			VkImageViewCreateInfo createInfo = {};
-			createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-			createInfo.image = swapChainImages[i];
-
-			createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-			createInfo.format = swapChainImageFormat;
-
-			createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-			createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-			createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-			createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-			
-			createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			createInfo.subresourceRange.baseMipLevel = 0;
-			createInfo.subresourceRange.levelCount = 1;
-			createInfo.subresourceRange.baseArrayLayer = 0; // for sterioscopic rendering (VR)
-			createInfo.subresourceRange.layerCount = 1;
-
-			PV_VK_RUN(vkCreateImageView(device, &createInfo, allocnullptr, &swapChainImageViews[i]));
+			swapChainImageViews[i] = createImageView(swapChainImages[i], swapChainImageFormat);
 		}
 	}
 	void createRenderPass()
@@ -1034,6 +1018,37 @@ private:
 		endSingleTimeCommands(singleTimeCommandBuffer);
 	}
 	
+
+	void createTextureImageView()
+	{
+		textureImageView = createImageView(textureImage, VK_FORMAT_R8G8B8A8_UNORM);
+	}
+
+	// Assumes 2D and No mip map details
+	VkImageView createImageView(VkImage image, VkFormat format)
+	{
+		VkImageViewCreateInfo viewInfo = {};
+		viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		viewInfo.image = image; // @PARAM
+		viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+		viewInfo.format = format;
+		viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		viewInfo.subresourceRange.baseMipLevel = 0; // @MIP
+		viewInfo.subresourceRange.levelCount = 1;
+		viewInfo.subresourceRange.baseArrayLayer = 0;
+		viewInfo.subresourceRange.layerCount = 1;
+
+		viewInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+		viewInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+		viewInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+		viewInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+		VkImageView imageView;
+
+		PV_VK_RUN(vkCreateImageView(device, &viewInfo, allocnullptr, &imageView));
+
+		return imageView;
+	}
 
 	void createImage(uint32_t width, uint32_t height, uint32_t depth, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory)
 	{
