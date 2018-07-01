@@ -168,11 +168,16 @@ private:
 	VkDescriptorSet  descriptorSet;
 	VkDescriptorSetLayout descriptorSetLayout;
 
-	// @TODO make this work with lots of models in loading or something
+	// @TODO make this work with lots of models in loading or somethingVkImage textureImage;
+	VkImage textureImage;
+	VkDeviceMemory textureImageMemory;
+
+
 	VkBuffer vertexBuffer;
 	VkDeviceMemory vertexBufferMemory;
 	VkBuffer indexBuffer;
 	VkDeviceMemory indexBufferMemory;
+
 	VkBuffer uniformBuffer;
 	VkDeviceMemory uniformBufferMemory;
 
@@ -895,9 +900,176 @@ private:
 	// uses command pool
 	void createTextureImage() 
 	{
+		const char* lunaPath =   "../textures/LunaTooClose.jpg";
+		const char* statuePath = "../textures/statue512";
+
+		// Load textures from file
+		int texWidth, texHeight, texChannels;
+		stbi_uc* pixels = stbi_load(lunaPath, &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+		// RGBA channels are 255,255,255,255 4 bytes each
+		VkDeviceSize imageSize = texWidth * texHeight * 4;
+
+		if (!pixels)
+		{
+			throw std::runtime_error("failed to load texture image!");
+		}
+
+		// @SPEED @POOL
+		VkBuffer stagingBuffer;
+		VkDeviceMemory stagingBufferMemory;
+
+		createBuffer(
+			imageSize,
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			stagingBuffer,
+			stagingBufferMemory);
+
+		// staging buffer now has image
+		void* data;
+		vkMapMemory(device, stagingBufferMemory, 0, imageSize, 0, &data);
+		memcpy(data, pixels, static_cast<size_t>(imageSize));
+		vkUnmapMemory(device, stagingBufferMemory);
+
+		// free loaded textures from memory
+		stbi_image_free(pixels);
+
+		createImage(texWidth, texHeight, 1, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, textureImage, textureImageMemory);
+
+		// transfer from staging buffer into textureImageMemory
+		{
+			// Make image able to recieve staging buffer data
+			transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+			// transfer staging buffer data
+			copyBufferToImage(stagingBuffer, textureImage, static_cast<uint32_t>(texWidth), static_cast<uint32_t>(texHeight));
+			// mek image able to be read from shaders
+			transitionImageLayout(textureImage, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		}
+		
+		vkDestroyBuffer(device, stagingBuffer, allocnullptr);
+		vkFreeMemory(device, stagingBufferMemory, allocnullptr);
 
 	}
+	void transitionImageLayout(VkImage image, VkFormat fomat, VkImageLayout oldLayout, VkImageLayout newLayout)
+	{
+		VkCommandBuffer singleTimeCommandBuffer = beginSingleTimeCommands();
 
+		VkImageMemoryBarrier barrier = {};
+		barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+		barrier.oldLayout = oldLayout;
+		barrier.newLayout = newLayout;
+		
+		// Used to change queue family ownership. Set to Ignored
+		// for our purposes of layout transition
+		barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
+		// image and its layout
+		barrier.image = image;
+		barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		barrier.subresourceRange.baseMipLevel = 0;
+		barrier.subresourceRange.levelCount = 1;
+		barrier.subresourceRange.baseArrayLayer = 0;
+		barrier.subresourceRange.layerCount = 1;
+		
+		VkPipelineStageFlags sourceStage = 0;
+		VkPipelineStageFlags destinationStage = 0;
+
+		// Undef -> Dst
+		if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) 
+		{
+			barrier.srcAccessMask = 0;
+			barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+
+			sourceStage = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+			destinationStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+		}
+		// Dst -> Shader
+		else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) 
+		{
+			barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+			barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+			sourceStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+			destinationStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+		}
+		else 
+		{
+			throw std::invalid_argument("unsupported layout transition!");
+		}
+
+
+		vkCmdPipelineBarrier(
+			singleTimeCommandBuffer,
+			sourceStage, destinationStage,
+			0,
+			0, nullptr,
+			0, nullptr,
+			1, &barrier
+		);
+
+		endSingleTimeCommands(singleTimeCommandBuffer);
+	}
+
+	// Assumes that image in in VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL
+	void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height)
+	{
+		VkCommandBuffer singleTimeCommandBuffer = beginSingleTimeCommands();
+
+		VkBufferImageCopy region = {};
+		region.bufferOffset = 0;
+		region.bufferRowLength = 0;
+		region.bufferImageHeight = 0;
+
+		region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		region.imageSubresource.mipLevel = 0; // @MIP
+		region.imageSubresource.baseArrayLayer = 0;
+		region.imageSubresource.layerCount = 1;
+
+		region.imageOffset = { 0,0,0 };
+		region.imageExtent = { width, height, 1 };
+
+		vkCmdCopyBufferToImage(singleTimeCommandBuffer, buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+
+		endSingleTimeCommands(singleTimeCommandBuffer);
+	}
+	
+
+	void createImage(uint32_t width, uint32_t height, uint32_t depth, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage& image, VkDeviceMemory& imageMemory)
+	{
+		VkImageCreateInfo imageInfo = {};
+		imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+		imageInfo.imageType = VK_IMAGE_TYPE_2D;
+		imageInfo.extent.width = width;
+		imageInfo.extent.height = height;
+		imageInfo.extent.depth = depth;
+		imageInfo.mipLevels = 1; // @TODO MipMaps
+		imageInfo.arrayLayers = 1;
+
+		imageInfo.format = VK_FORMAT_R8G8B8A8_UNORM; // Not all formats are supported, @ROBUSTNESS
+		imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;  // @Investigate
+		imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED; // will discard texels
+		imageInfo.usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+		imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE; // only used by 1 queue family: graphics
+		imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
+		imageInfo.flags = 0; // Optional
+
+		PV_VK_RUN(vkCreateImage(device, &imageInfo, allocnullptr, &this->textureImage));
+
+		// Allocate Memory for Image
+		VkMemoryRequirements memRequirements;
+		vkGetImageMemoryRequirements(device, this->textureImage, &memRequirements);
+
+		VkMemoryAllocateInfo allocInfo = {};
+		allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+		allocInfo.allocationSize = memRequirements.size;
+		allocInfo.memoryTypeIndex = findMemoryType(memRequirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+		PV_VK_RUN(vkAllocateMemory(device, &allocInfo, allocnullptr, &textureImageMemory));
+
+		// bind image to a block of memory (Set texture object's data ptr)
+		vkBindImageMemory(device, textureImage, textureImageMemory, 0);
+	}
 
 	void createVertexBuffer()
 	{
@@ -995,52 +1167,15 @@ private:
 	// Buffer copy requires that we submit the command to copy through a command queue
 	void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size)
 	{
-		// @SPEED staging buffers are temporary, but may be faster
-		// if they were in a seperate commandPool for the short-lived nature they have
-		// use VK_COMMAND_POOL_CREATE_TRANSIENT_BIT if we ever do this.
-		// these different buffers and pools could then but used to move data onto the GPU
-		// @Staging Buffer
-		VkCommandBufferAllocateInfo allocInfo = {};
-		allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-		allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-		allocInfo.commandPool = commandPool;
-		allocInfo.commandBufferCount = 1;
-
-		VkCommandBuffer commandBuffer;
-		vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
-
-		VkCommandBufferBeginInfo beginInfo = {};
-		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-		vkBeginCommandBuffer(commandBuffer, &beginInfo);
+		VkCommandBuffer singleUseCommandBuffer = beginSingleTimeCommands();
 
 		VkBufferCopy copyRegion = {};
 		copyRegion.srcOffset = 0;
 		copyRegion.dstOffset = 0;
 		copyRegion.size = size;
-		vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
+		vkCmdCopyBuffer(singleUseCommandBuffer, srcBuffer, dstBuffer, 1, &copyRegion);
 
-		vkEndCommandBuffer(commandBuffer);
-
-		VkSubmitInfo submitInfo = {};
-		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		submitInfo.commandBufferCount = 1;
-		submitInfo.pCommandBuffers = &commandBuffer;
-
-		// @SPEED @Resources. The graphics Queue is a superset of a transfer queue
-		// which can handle thsi sort of copy buffer operation. It may be better
-		// to make a seperate transferQueue in the furture to make this more clean
-		// and potentially gain some performance. See top of @Staging Buffer for
-		// some of the details to impliment this.
-		vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
-
-		// @Speed we may also want to transfer mulitple buffers at once. This can
-		// be done using fences which would let us move many buffers at once
-		vkQueueWaitIdle(graphicsQueue);
-
-		// @SPEED see top of fun, this is a throw away command Buffer
-		vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
+		endSingleTimeCommands(singleUseCommandBuffer);
 	}
 
 	void createDescriptorPool()
@@ -1200,6 +1335,43 @@ private:
 		}
 
 		return notSuitable == false;
+	}
+
+	VkCommandBuffer beginSingleTimeCommands()
+	{
+		VkCommandBufferAllocateInfo allocInfo = {};
+		allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+		allocInfo.commandPool = commandPool;
+		allocInfo.commandBufferCount = 1;
+
+		VkCommandBuffer commandBuffer;
+		vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer);
+
+		VkCommandBufferBeginInfo beginInfo = {};
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+		vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+		return commandBuffer;
+	}
+	// function is blocking to wait idle on the Graphics Queue
+	// @SPEED This sort of thing should probably get its own queues...?
+	// so that it doesn't block for so long OR we make a proper job system.
+	void endSingleTimeCommands(VkCommandBuffer commandBuffer)
+	{
+		vkEndCommandBuffer(commandBuffer);
+
+		VkSubmitInfo submitInfo = {};
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &commandBuffer;
+
+		vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+		vkQueueWaitIdle(graphicsQueue);
+
+		vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
 	}
 
 	// helpers for swap chain creation
@@ -1645,6 +1817,9 @@ private:
 
 			// free buffers
 			{
+				vkDestroyImage(device, textureImage, allocnullptr);
+				vkFreeMemory(device, textureImageMemory, allocnullptr);
+
 				vkDestroyDescriptorSetLayout(device, descriptorSetLayout, allocnullptr);
 				vkDestroyBuffer(device, uniformBuffer, allocnullptr);
 				vkFreeMemory(device, uniformBufferMemory, allocnullptr);
