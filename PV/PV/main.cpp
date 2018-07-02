@@ -169,6 +169,7 @@ private:
 	VkDescriptorSetLayout descriptorSetLayout;
 
 	// @TODO make this work with lots of models in loading or somethingVkImage textureImage;
+	VkSampler textureSampler;
 	VkImageView textureImageView;
 	VkImage textureImage;
 	VkDeviceMemory textureImageMemory;
@@ -236,6 +237,7 @@ private:
 
 		createTextureImage();
 		createTextureImageView();
+		createTextureSampler();
 
 		// make buffers
 		createVertexBuffer();
@@ -454,6 +456,7 @@ private:
 		
 		// default features are fine for now. If we do anything fancy we probably want to change this...
 		VkPhysicalDeviceFeatures deviceFeatures = {}; 
+		deviceFeatures.samplerAnisotropy = VK_TRUE; // We want Anisotropic filters
 
 		VkDeviceCreateInfo deviceCreateInfo = {};
 		deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
@@ -1018,12 +1021,45 @@ private:
 		endSingleTimeCommands(singleTimeCommandBuffer);
 	}
 	
-
 	void createTextureImageView()
 	{
 		textureImageView = createImageView(textureImage, VK_FORMAT_R8G8B8A8_UNORM);
 	}
 
+	void createTextureSampler()
+	{
+		VkSamplerCreateInfo samplerInfo = {};
+		samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+
+		// Super/Sub samples are done via bilinear interpolation
+		samplerInfo.magFilter = VK_FILTER_LINEAR;
+		samplerInfo.minFilter = VK_FILTER_LINEAR;
+		// How wrapping is handled along each boundary of the image sampler
+		samplerInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		samplerInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		samplerInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+		// How many samples to use to determine color
+		// To Disable: False, 1
+		// To Enable: True, 16
+		samplerInfo.anisotropyEnable = VK_TRUE;
+		samplerInfo.maxAnisotropy = 16;
+		// Color of boarder if we were using a clamping address mode
+		samplerInfo.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;
+		// UVW coordinates should be normalized (0-1)
+		samplerInfo.unnormalizedCoordinates = VK_FALSE;
+		// used for shadow map sampler's for Percentage-Closer Filtering
+		// https://developer.nvidia.com/gpugems/GPUGems/gpugems_ch11.html
+		samplerInfo.compareEnable = VK_FALSE;
+		samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+		// @MIP
+		samplerInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_LINEAR;
+		samplerInfo.mipLodBias = 0.0f;
+		samplerInfo.minLod = 0.0f;
+		samplerInfo.maxLod = 0.0f;
+
+		PV_VK_RUN(vkCreateSampler(device, &samplerInfo, allocnullptr, &textureSampler));
+
+	}
 	// Assumes 2D and No mip map details
 	VkImageView createImageView(VkImage image, VkFormat format)
 	{
@@ -1321,10 +1357,10 @@ private:
 			VkPhysicalDeviceProperties deviceProperties;
 			vkGetPhysicalDeviceProperties(device, &deviceProperties);
 		}
-		
+
+		VkPhysicalDeviceFeatures deviceFeatures;
 		// Device Features good for our purposes?
 		{
-			VkPhysicalDeviceFeatures deviceFeatures;
 			vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
 		}
 
@@ -1335,10 +1371,14 @@ private:
 			if (notSuitable) return false;
 		}
 
+		// Physical Features Supported?
+		{
+			notSuitable |= (deviceFeatures.samplerAnisotropy == VK_FALSE);
+		}
+
 		// Does device support needed extensions?
 		{
 			notSuitable |= checkDeviceExtensionSupport(device) == false;
-			if (notSuitable) return false;
 		}
 
 		// Swap chain support good?
@@ -1346,7 +1386,6 @@ private:
 			SwapChainSupportDetails chainSupportDetails = QuerySwapChainSupport(device);
 			notSuitable |= chainSupportDetails.formats.empty();
 			notSuitable |= chainSupportDetails.presentModes.empty();
-			if (notSuitable) return false;
 		}
 
 		return notSuitable == false;
@@ -1829,9 +1868,14 @@ private:
 			cleanupSwapChain();
 
 			vkDestroyDescriptorPool(device, descriptorPool, allocnullptr);
-
+			
 			// free buffers
 			{
+				// @NOTE sampler is not bound to a texture, maybe an independent object
+				vkDestroySampler(device, textureSampler, allocnullptr);
+				// @NOTE ImageView, Image, Memory may be considered a "block" and managed together
+				// if we so desired...
+				vkDestroyImageView(device, textureImageView, allocnullptr);
 				vkDestroyImage(device, textureImage, allocnullptr);
 				vkFreeMemory(device, textureImageMemory, allocnullptr);
 
