@@ -25,11 +25,12 @@
 #include <chrono>
 
 const std::vector<Vertex> vertices = {
-    {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}},
-    {{0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}},
-    {{0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}},
-    {{-0.5f, 0.5f}, {1.0f, 1.0f, 1.0f}}
+    {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+    {{ 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+    {{ 0.5f,  0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+    {{-0.5f,  0.5f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}
 };
+
 // mesh must be < 65535 verticies
 // use uint32_t > 65535 verticies
 // Will require that our binding get changed
@@ -638,18 +639,28 @@ private:
 	void createDescriptorSetLayout()
 	{
 		VkDescriptorSetLayoutBinding uboLayoutBinding = {};
-		uboLayoutBinding.binding = 0;
+		uboLayoutBinding.binding = 0;// binding ID: 0
 		uboLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 		uboLayoutBinding.descriptorCount = 1;
 		uboLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-		uboLayoutBinding.pImmutableSamplers = nullptr; // @TODO image samplers
+		uboLayoutBinding.pImmutableSamplers = nullptr;
+
+		VkDescriptorSetLayoutBinding samplerLayoutBinding = {};
+		samplerLayoutBinding.binding = 1; // binding ID: 1
+		samplerLayoutBinding.descriptorCount = 1;
+		samplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		samplerLayoutBinding.pImmutableSamplers = nullptr;
+		samplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+
+		std::array<VkDescriptorSetLayoutBinding, 2> bindings = { uboLayoutBinding, samplerLayoutBinding };
 
 		VkDescriptorSetLayoutCreateInfo layoutInfo = {};
 		layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-		layoutInfo.bindingCount = 1;
-		layoutInfo.pBindings = &uboLayoutBinding;
+		layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
+		layoutInfo.pBindings = bindings.data();
 
 		PV_VK_RUN(vkCreateDescriptorSetLayout(device, &layoutInfo, allocnullptr, &descriptorSetLayout));
+
 	}
 
 	void createGraphicsPipeline()
@@ -888,11 +899,11 @@ private:
 	void createTextureImage() 
 	{
 		const char* lunaPath =   "../textures/LunaTooClose.jpg";
-		const char* statuePath = "../textures/statue512";
+		const char* statuePath = "../textures/statue512.jpg";
 
 		// Load textures from file
 		int texWidth, texHeight, texChannels;
-		stbi_uc* pixels = stbi_load(lunaPath, &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+		stbi_uc* pixels = stbi_load(statuePath, &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 		// RGBA channels are 255,255,255,255 4 bytes each
 		VkDeviceSize imageSize = texWidth * texHeight * 4;
 
@@ -1235,45 +1246,67 @@ private:
 		{ 
 			// Type , Count
 			{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1},
+			{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1},
 		};
 		
 		VkDescriptorPoolCreateInfo poolInfo = {};
 		poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-		poolInfo.poolSizeCount = sizeof(poolSizes[0])/sizeof(poolSizes);
+		poolInfo.poolSizeCount = sizeof(poolSizes)/sizeof(poolSizes[0]);
 		poolInfo.pPoolSizes = poolSizes;
-		poolInfo.maxSets = 1; // @DESCRIPTORPOOLSIZE
+		poolInfo.maxSets = 1;
 
 		PV_VK_RUN(vkCreateDescriptorPool(device, &poolInfo, allocnullptr, &descriptorPool));
 	}
 	void createDescriptorSet()
 	{
-		VkDescriptorSetLayout layouts[] = { descriptorSetLayout };
-		VkDescriptorSetAllocateInfo allocInfo = {};
-		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-		allocInfo.descriptorPool = descriptorPool;
-		allocInfo.descriptorSetCount = 1;
-		allocInfo.pSetLayouts = layouts;
+		// allocate Descriptor Sets
+		{
+			VkDescriptorSetLayout layouts[] = { descriptorSetLayout };
+			VkDescriptorSetAllocateInfo allocInfo = {};
+			allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+			allocInfo.descriptorPool = descriptorPool;
+			allocInfo.descriptorSetCount = 1;
+			allocInfo.pSetLayouts = layouts;
 
-		PV_VK_RUN(vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet));
+			PV_VK_RUN(vkAllocateDescriptorSets(device, &allocInfo, &descriptorSet));
+		}
+
+		std::array<VkWriteDescriptorSet, 2> descWrite = {};
+		// UBO Description
 
 		VkDescriptorBufferInfo bufferInfo = {};
-		bufferInfo.buffer = uniformBuffer;
-		bufferInfo.offset = 0;
-		bufferInfo.range = sizeof(UniformBufferObject);
+		{
+			VkWriteDescriptorSet& desc = descWrite[0];
+			bufferInfo.buffer = uniformBuffer;
+			bufferInfo.offset = 0;
+			bufferInfo.range = sizeof(UniformBufferObject);
 
-		VkWriteDescriptorSet descWrite = {};
-		descWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descWrite.dstSet = descriptorSet;
-		descWrite.dstBinding = 0;
-		descWrite.dstArrayElement = 0;
+			desc.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			desc.dstSet = descriptorSet;
+			desc.dstBinding = 0;
+			desc.dstArrayElement = 0;
+			desc.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			desc.descriptorCount = 1;
+			desc.pBufferInfo = &bufferInfo;
+		}
+		VkDescriptorImageInfo imageInfo = {};
+		// Sampler Description
+		{
+			VkWriteDescriptorSet& desc = descWrite[1];
+			imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			imageInfo.imageView = textureImageView;
+			imageInfo.sampler = textureSampler;
 
-		descWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		descWrite.descriptorCount = 1;
+			desc.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			desc.dstSet = descriptorSet;
+			desc.dstBinding = 1;
+			desc.dstArrayElement = 0;
+			desc.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			desc.descriptorCount = 1;
+			desc.pImageInfo = &imageInfo;
+		}
 
-		descWrite.pBufferInfo = &bufferInfo;
-		descWrite.pImageInfo = nullptr; // Optional
-		descWrite.pTexelBufferView = nullptr; // Optional
-		vkUpdateDescriptorSets(device, 1, &descWrite, 0, nullptr);
+		vkUpdateDescriptorSets(device, static_cast<uint32_t>(descWrite.size()), descWrite.data(), 0, nullptr);
 	}
 
 	void createCommandBuffers()
@@ -1320,7 +1353,7 @@ private:
 			const VkBuffer vertexbuffers[] = { vertexBuffer };
 			const VkDeviceSize offsets[] = { 0 };
 			const uint32_t vertexBufferCount = (sizeof(vertexbuffers) / sizeof(vertexbuffers[0]));
-			size_t bindingCounter = 0;
+			uint32_t bindingCounter = 0;
 			vkCmdBindVertexBuffers(commandBuffers[i], bindingCounter++, vertexBufferCount, vertexbuffers, offsets);
 
 			// VK_INDEX_TYPE_UINT16 should be a field of the warpper since we don't need it for
@@ -1727,7 +1760,7 @@ private:
 		throw std::runtime_error("failed to find suitable memory type on selected GPU");
 
 
-		return -1U;
+		return -1;
 	}
 #pragma endregion
 
@@ -1753,7 +1786,7 @@ private:
 		static auto firstFrameOfProgram = std::chrono::high_resolution_clock::now();
 		auto currentTime = std::chrono::high_resolution_clock::now();
 		float time = std::chrono::duration<float, std::chrono::seconds::period>(currentTime - firstFrameOfProgram).count();
-
+		
 		// create Update UniformBufferObject
 		UniformBufferObject ubo = {};
 
