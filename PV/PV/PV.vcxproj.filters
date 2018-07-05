@@ -19,5 +19,7 @@
   <ItemGroup>
     <ClInclude Include="Misc.hpp" />
     <ClInclude Include="Vertex.h" />
+    <ClInclude Include="MultiArray.h" />
+    <ClInclude Include="Mesh.h" />
   </ItemGroup>
 </Project>

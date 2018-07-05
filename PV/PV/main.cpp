@@ -21,8 +21,12 @@
 #include <glm/gtc/matrix_transform.hpp> // glm::perspective
 
 #include "Vertex.h" // had include dependencies
+#include "Mesh.h"
 
 #include <chrono>
+
+// @TODO convert indicies and verticies to use this!!!
+Mesh mesh(2, 3);
 
 const std::vector<Vertex> vertices = {
     {{-0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
@@ -903,7 +907,7 @@ private:
 
 		// Load textures from file
 		int texWidth, texHeight, texChannels;
-		stbi_uc* pixels = stbi_load(statuePath, &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+		stbi_uc* pixels = stbi_load(lunaPath, &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 		// RGBA channels are 255,255,255,255 4 bytes each
 		VkDeviceSize imageSize = texWidth * texHeight * 4;
 
@@ -2001,6 +2005,8 @@ private:
 #pragma endregion
 };
 
+
+
 #pragma region ErrorHandling
 
 static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
@@ -2020,6 +2026,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 }
 
 #pragma endregion
+
 
 int main() {
 	PVWindow app;
