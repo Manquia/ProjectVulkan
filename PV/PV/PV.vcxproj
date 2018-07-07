@@ -84,7 +84,7 @@
       <Optimization>Disabled</Optimization>
       <SDLCheck>false</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\Libraries\stb;$(SolutionDir)..\Libraries\Vulkan\Include;$(SolutionDir)..\Libraries\glm;$(SolutionDir)..\Libraries\GLFW\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\Libraries\stb;$(SolutionDir)..\Libraries\Vulkan\Include;$(SolutionDir)..\Libraries\glm;$(SolutionDir)..\Libraries\GLFW\include;$(SolutionDir)..\Libraries\syoyo;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <AdditionalLibraryDirectories>$(SolutionDir)..\Libraries\Vulkan\Lib;$(SolutionDir)..\Libraries\GLFW\Debug;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
@@ -118,7 +118,7 @@ $(SolutionDir)SPV\compileShaders.bat</Command>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>false</SDLCheck>
       <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(SolutionDir)..\Libraries\stb;$(SolutionDir)..\Libraries\Vulkan\Include;$(SolutionDir)..\Libraries\glm;$(SolutionDir)..\Libraries\GLFW\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(SolutionDir)..\Libraries\stb;$(SolutionDir)..\Libraries\Vulkan\Include;$(SolutionDir)..\Libraries\glm;$(SolutionDir)..\Libraries\GLFW\include;$(SolutionDir)..\Libraries\syoyo;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
