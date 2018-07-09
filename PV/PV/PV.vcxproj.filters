@@ -21,5 +21,7 @@
     <ClInclude Include="Vertex.h" />
     <ClInclude Include="MultiArray.h" />
     <ClInclude Include="Mesh.h" />
+    <ClInclude Include="Texture.h" />
+    <ClInclude Include="Model.h" />
   </ItemGroup>
 </Project>

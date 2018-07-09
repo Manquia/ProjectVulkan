@@ -1,13 +1,13 @@
 #pragma once
 
 /*
-	Include dependencies: glm
-
+	Include dependencies: glm, Vulkan
 */
 #include "MultiArray.h"
 
 
-class Mesh {
+struct Mesh {
+private:
 	MultiArray<glm::vec3, uint32_t, glm::vec2> data;
 public:
 
@@ -24,4 +24,9 @@ public:
 	ArrayView<glm::vec2> uvs() {
 		return data.getView<2, glm::vec2>();
 	}
+
+	// @MESH
+	VkBuffer vertexBuffer;
+	VkDeviceMemory vertexBufferMemory;
+
 };

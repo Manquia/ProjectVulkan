@@ -9,6 +9,7 @@
 #include <vector>
 #include <set>
 #include <algorithm> // std::min,max
+#include <unordered_map>
 #include <assert.h>
 
 #include "Misc.hpp"
@@ -20,15 +21,22 @@
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/hash.hpp>
 
-#include "Vertex.h" // had include dependencies
-#include "Mesh.h"
+// tiny Obj Loader
+#define TINYOBJLOADER_IMPLEMENTATION
+#include <tiny_obj_loader.h>
+
+#include "Vertex.h" // has include dependencies
+#include "Mesh.h"	// has include dependencies
+#include "Texture.h"
 
 #include <chrono>
 
-// @TODO convert indicies and verticies to use this!!!
+// @TODO convert indicies and vertices to use this!!!
 Mesh mesh(2, 3);
-
+/*
 const std::vector<Vertex> vertices = {
 { { -0.5f, -0.5f, 0.0f },{ 1.0f, 0.0f, 0.0f },{ 0.0f, 0.0f } },
 { { 0.5f, -0.5f,  0.0f },{ 0.0f, 1.0f, 0.0f },{ 1.0f, 0.0f } },
@@ -45,12 +53,13 @@ const std::vector<Vertex> vertices = {
 { { 0.5f, 0.5f,   0.45f },{ 0.0f, 0.0f, 1.0f },{ 1.0f, 1.0f } },
 { { -0.5f, 0.5f,  0.45f },{ 1.0f, 1.0f, 1.0f },{ 0.0f, 1.0f } }
 };
-
 const std::vector<uint16_t> indices = {
 	0, 1, 2, 2, 3, 0,
 	4, 5, 6, 6, 7, 4,
 	8, 9,10,10,11, 8
 };
+*/
+
 
 struct UniformBufferObject
 {
@@ -156,6 +165,7 @@ private:
 	int pvWindowWidth = 800;  // starting values
 	int pvWindowHeight = 600; // starting values
 
+
 	VkInstance pvinstance;
 	VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 	VkDevice device = VK_NULL_HANDLE;
@@ -193,6 +203,8 @@ private:
 	VkDeviceMemory depthImageMemory;
 	VkImageView depthImageView;
 
+	std::vector<Vertex> vertices;
+	std::vector<uint32_t> indices;
 	VkBuffer vertexBuffer;
 	VkDeviceMemory vertexBufferMemory;
 
@@ -263,6 +275,7 @@ private:
 		createTextureSampler();
 
 		// make buffers
+		loadModel();
 		createVertexBuffer();
 		createIndexBuffer();
 		createUniformBuffer();
@@ -984,10 +997,13 @@ private:
 	{
 		const char* lunaPath =   "../textures/LunaTooClose.jpg";
 		const char* statuePath = "../textures/statue512.jpg";
+		std::string chaletTex = TexturePath("chalet.jpg");
+		
+		std::string textureImagePath = chaletTex;
 
 		// Load textures from file
 		int texWidth, texHeight, texChannels;
-		stbi_uc* pixels = stbi_load(lunaPath, &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+		stbi_uc* pixels = stbi_load(textureImagePath.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
 		// RGBA channels are 255,255,255,255 4 bytes each
 		VkDeviceSize imageSize = texWidth * texHeight * 4;
 
@@ -1242,6 +1258,63 @@ private:
 		vkBindImageMemory(device, image, imageMemory, 0);
 	}
 
+	template<bool removeDuplicateVerts>
+	void loadModel()
+	{
+		const std::string chaletModelPath = MeshPath("chalet.obj");
+
+		tinyobj::attrib_t attrib;
+		std::vector<tinyobj::shape_t> shapes;
+		std::vector<tinyobj::material_t> materials;
+		std::string err;
+
+		if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &err, chaletModelPath.c_str())) {
+			throw std::runtime_error(err);
+		}
+
+
+		std::unordered_map<Vertex, uint32_t> uniqueVertices;
+
+		for (const auto& shape : shapes)
+		{
+			for (const auto& index : shape.mesh.indices)
+			{
+				Vertex vertex = {};
+
+				vertex.position = {
+					attrib.vertices[3 * index.vertex_index + 0],
+					attrib.vertices[3 * index.vertex_index + 1],
+					attrib.vertices[3 * index.vertex_index + 2]
+				}; // attrib.vertices are floats, and we need to grab vec3 out of them
+
+				vertex.texCoord = {
+					attrib.texcoords[2 * index.texcoord_index + 0],
+					1.0f - attrib.texcoords[2 * index.texcoord_index + 1]
+				}; // attrib.vertices are floats, and we need to grab vec2 out of them
+				
+				vertex.color = { 1.0f, 1.0f, 1.0f };
+
+				// remove duplicate verticies and use the indexBuffer to lookup the correct
+				// vertex to draw.
+				if (removeDuplicateVerts && uniqueVertices.count(vertex) == 0) {
+					uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
+					vertices.push_back(vertex);
+				}
+				else if(!removeDuplicateVerts)
+				{
+					vertices.push_back(vertex);
+				}
+
+				if(removeDuplicateVerts)
+					indices.push_back(uniqueVertices[vertex]);
+				else
+					indices.push_back(indices.size());
+			}
+		}
+
+		std::cout << "UniqueVerts: " << uniqueVertices.size() << std::endl;
+	}
+
 	void createVertexBuffer()
 	{
 		VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
@@ -1471,8 +1544,8 @@ private:
 			vkCmdBindVertexBuffers(commandBuffers[i], bindingCounter++, vertexBufferCount, vertexbuffers, offsets);
 
 			// VK_INDEX_TYPE_UINT16 should be a field of the warpper since we don't need it for
-			// models which are less than 65000 verticies which should be most things, @TODO @Speed
-			vkCmdBindIndexBuffer(commandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT16);
+			// models which are less than 65000 verticies which should be most things
+			vkCmdBindIndexBuffer(commandBuffers[i], indexBuffer, 0, VK_INDEX_TYPE_UINT32);
 
 			vkCmdBindDescriptorSets(commandBuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
 
@@ -2151,6 +2224,20 @@ private:
 	}
 	
 
+#pragma endregion
+
+
+#pragma region resources
+
+	static std::string TexturePath(const std::string& textureName)
+	{
+		return std::string("../textures/").append(textureName);
+	}
+
+	static std::string MeshPath(const std::string& textureName)
+	{
+		return std::string("../meshes/").append(textureName);
+	}
 #pragma endregion
 };
 
