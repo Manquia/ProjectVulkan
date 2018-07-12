@@ -275,7 +275,7 @@ private:
 		createTextureSampler();
 
 		// make buffers
-		loadModel();
+		loadModel<true>();
 		createVertexBuffer();
 		createIndexBuffer();
 		createUniformBuffer();
