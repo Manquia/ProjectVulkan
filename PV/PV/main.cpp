@@ -2140,9 +2140,11 @@ private:
 		// create Update UniformBufferObject
 		UniformBufferObject ubo = {};
 
+		float width =  std::max(static_cast<float>(swapChainExtent.width), 5.0f);
+		float height = std::max(static_cast<float>(swapChainExtent.height), 5.0f);
 		ubo.model = glm::rotate(glm::mat4(1.0f), time * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 		ubo.view = glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-		ubo.proj = glm::perspective(glm::radians(fieldOfView), swapChainExtent.width / (float)swapChainExtent.height, 0.1f, 100.0f);
+		ubo.proj = glm::perspective(glm::radians(fieldOfView), width / height, 0.1f, 100.0f);
 		ubo.proj[1][1] *= -1.0f; // Invert Y coordinate for Vuklan, glm was made for OpenGL orginally
 
 		// move ubo into GPUs
