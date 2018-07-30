@@ -29,20 +29,27 @@ private:
 };
 
 
+
+#include <typeindex>
+#include <typeinfo>
+
 template <class ... Args>
 struct MultiArray 
 {
-
-private:
 	static constexpr int s_num_arrays = sizeof...(Args);
 	std::array<uint32_t, s_num_arrays> m_offsets;
 	std::unique_ptr<char[]> m_memory;
-public: 
+
+	static constexpr std::array<uint32_t, s_num_arrays> type_sizes = { sizeof(Args)... };
+
+	static const std::array<std::type_index, s_num_arrays> & const GetTypeIndex()
+	{
+		static std::array<std::type_index, s_num_arrays> type_index = { std::type_index(typeid(Args))... };
+		return type_index;
+	}
+
 	MultiArray(const std::array<uint32_t, s_num_arrays> & sizes)
 	{
-		constexpr std::array<uint32_t, s_num_arrays> type_sizes =
-		{ sizeof(Args)... };
-
 		uint32_t partial_sum = 0;
 		for (std::size_t i = 0; i != s_num_arrays; ++i) {
 			partial_sum += sizes[i] * type_sizes[i];

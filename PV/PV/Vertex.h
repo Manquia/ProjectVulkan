@@ -5,6 +5,72 @@
 //
 #include <array>
 
+#include "MultiArray.h"
+#include <unordered_map>
+
+#include <typeinfo>
+#include <typeindex>
+
+
+// @HIDE ME
+#define FORMAT(TYPE, FORMAT) { std::type_index(typeid(TYPE)), FORMAT },
+static const std::unordered_map<std::type_index, VkFormat> TypeIdToVKFormatMap =
+{
+	FORMAT(float, VK_FORMAT_R32_SFLOAT)
+	FORMAT(glm::vec2, VK_FORMAT_R32G32_SFLOAT)
+	FORMAT(glm::vec3, VK_FORMAT_R32G32B32_SFLOAT)
+
+	//@Expansion add more formats for different types
+};
+#undef FORMAT
+
+
+// returns VK_FORMAT_UNDEFINED if undefined
+static VkFormat TypeIndexToVkFormat(std::type_index index)
+{
+	auto found = TypeIdToVKFormatMap.find(index);
+	if (found == TypeIdToVKFormatMap.end())
+		return VK_FORMAT_UNDEFINED;
+	else
+		return (*found).second;
+}
+
+
+template<int attributeCount>
+struct InputDescription
+{
+	VkVertexInputBindingDescription								  binding;
+	std::array<VkVertexInputAttributeDescription, attributeCount> attributes;
+};
+
+template<class MultiArrayType>
+InputDescription<MultiArrayType::s_num_arrays> GetInputDescription(int binding, VkVertexInputRate rate)
+{
+	InputDescription<MultiArrayType::s_num_arrays> in;
+
+	auto TypeIndicies = MultiArrayType::GetTypeIndex();
+		
+	int offset = 0;
+
+	for (int i = 0; i < MultiArrayType::s_num_arrays; ++i)
+	{
+		in.attributes[i].location = i;
+		in.attributes[i].binding = binding;
+		in.attributes[i].offset = offset;
+		in.attributes[i].format = TypeIndexToVkFormat(TypeIndicies[i]);
+
+		assert(in.attributes[i].format != VK_FORMAT_UNDEFINED);
+
+		offset += MultiArrayType::type_sizes[i];
+	}
+
+	in.binding.binding = binding;
+	in.binding.inputRate = rate;
+	in.binding.stride = offset;
+	return in;
+}
+
+
 
 // colored vertexes
 // @TODO: This is a veriadic template version of this which we could use

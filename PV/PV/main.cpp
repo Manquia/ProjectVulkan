@@ -2395,8 +2395,27 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 #pragma endregion
 
 
+struct TransformData
+{
+	MultiArray<glm::vec3, glm::vec3, glm::quat> data;
+	TransformData(unsigned int instanceCount)
+		: data({ instanceCount, instanceCount, instanceCount })
+	{
+	}
+
+};
+
 int main() {
 	PVWindow app;
+
+	Mesh m(2, 3);
+	TransformData t(100);
+
+	auto inputDescript = GetInputDescription<decltype(Mesh::data)>(0, VK_VERTEX_INPUT_RATE_VERTEX);
+	auto transformInstanceData = GetInputDescription<decltype(TransformData::data)>(1, VK_VERTEX_INPUT_RATE_INSTANCE);
+
+	const auto ret = decltype(m.data)::GetTypeIndex();
+	
 
 	try {
 		app.run();

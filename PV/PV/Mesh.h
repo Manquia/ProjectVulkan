@@ -6,10 +6,9 @@
 #include "MultiArray.h"
 
 
-struct Mesh {
-private:
+struct Mesh 
+{
 	MultiArray<glm::vec3, uint32_t, glm::vec2> data;
-public:
 
 	Mesh(uint32_t num_vertices, uint32_t num_indices)
 		: data({ num_vertices, num_indices, num_vertices })
