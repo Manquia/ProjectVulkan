@@ -19,6 +19,8 @@ static const std::unordered_map<std::type_index, VkFormat> TypeIdToVKFormatMap =
 	FORMAT(float, VK_FORMAT_R32_SFLOAT)
 	FORMAT(glm::vec2, VK_FORMAT_R32G32_SFLOAT)
 	FORMAT(glm::vec3, VK_FORMAT_R32G32B32_SFLOAT)
+	FORMAT(uint32_t, VK_FORMAT_R32_UINT)
+	FORMAT(glm::quat, VK_FORMAT_R32G32B32A32_SFLOAT)
 
 	//@Expansion add more formats for different types
 };
