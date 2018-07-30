@@ -23,5 +23,6 @@
     <ClInclude Include="Mesh.h" />
     <ClInclude Include="Texture.h" />
     <ClInclude Include="Model.h" />
+    <ClInclude Include="Macros.h" />
   </ItemGroup>
 </Project>

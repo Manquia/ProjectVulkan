@@ -42,10 +42,10 @@ struct MultiArray
 
 	static constexpr std::array<uint32_t, s_num_arrays> type_sizes = { sizeof(Args)... };
 
-	static const std::array<std::type_index, s_num_arrays> & const GetTypeIndex()
+	static const std::array<const std::type_info*, s_num_arrays>& getTypeIds()
 	{
-		static std::array<std::type_index, s_num_arrays> type_index = { std::type_index(typeid(Args))... };
-		return type_index;
+		static std::array<const std::type_info*, s_num_arrays> type_info_array = { &typeid(Args)... };
+		return type_info_array;
 	}
 
 	MultiArray(const std::array<uint32_t, s_num_arrays> & sizes)

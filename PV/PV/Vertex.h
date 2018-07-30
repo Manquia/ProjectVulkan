@@ -1,7 +1,7 @@
 #pragma once
 
 //
-// Pre-Includes required: Vulkan, glm/glm.hpp
+// Pre-Includes required: Vulkan, glm/glm.hpp, Macros.h
 //
 #include <array>
 
@@ -19,8 +19,11 @@ static const std::unordered_map<std::type_index, VkFormat> TypeIdToVKFormatMap =
 	FORMAT(float, VK_FORMAT_R32_SFLOAT)
 	FORMAT(glm::vec2, VK_FORMAT_R32G32_SFLOAT)
 	FORMAT(glm::vec3, VK_FORMAT_R32G32B32_SFLOAT)
+	FORMAT(glm::vec4, VK_FORMAT_R32G32B32A32_SFLOAT)
+
 	FORMAT(uint32_t, VK_FORMAT_R32_UINT)
 	FORMAT(glm::quat, VK_FORMAT_R32G32B32A32_SFLOAT)
+
 
 	//@Expansion add more formats for different types
 };
@@ -49,8 +52,7 @@ template<class MultiArrayType>
 InputDescription<MultiArrayType::s_num_arrays> GetInputDescription(int binding, VkVertexInputRate rate)
 {
 	InputDescription<MultiArrayType::s_num_arrays> in;
-
-	auto TypeIndicies = MultiArrayType::GetTypeIndex();
+	auto typeIds = MultiArrayType::getTypeIds();
 		
 	int offset = 0;
 
@@ -59,9 +61,12 @@ InputDescription<MultiArrayType::s_num_arrays> GetInputDescription(int binding, 
 		in.attributes[i].location = i;
 		in.attributes[i].binding = binding;
 		in.attributes[i].offset = offset;
-		in.attributes[i].format = TypeIndexToVkFormat(TypeIndicies[i]);
+		in.attributes[i].format = TypeIndexToVkFormat(std::type_index(*typeIds[i]));
 
-		assert(in.attributes[i].format != VK_FORMAT_UNDEFINED);
+		// See TypeIdToVKFormatMap to add in the new format for you type
+		PV_ASSERT(in.attributes[i].format != VK_FORMAT_UNDEFINED,
+			std::string("TypeIdToVKFormatMap doesn't contain a map for the type of name: ") + std::string(typeIds[i]->name())
+		);
 
 		offset += MultiArrayType::type_sizes[i];
 	}
