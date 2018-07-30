@@ -206,10 +206,11 @@ private:
 	VkImageView depthImageView;
 
 	std::vector<Vertex> vertices;
-	std::vector<uint32_t> indices;
 	VkBuffer vertexBuffer;
 	VkDeviceMemory vertexBufferMemory;
 
+	
+	std::vector<uint32_t> indices;
 	VkBuffer indexBuffer;
 	VkDeviceMemory indexBufferMemory;
 
