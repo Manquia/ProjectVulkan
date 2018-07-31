@@ -140,12 +140,15 @@ $(SolutionDir)SPV\compileShaders.bat</Command>
     <None Include="..\shaders\shader.vert" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="LoadModel.h" />
     <ClInclude Include="Macros.h" />
     <ClInclude Include="Mesh.h" />
     <ClInclude Include="Misc.hpp" />
     <ClInclude Include="Model.h" />
     <ClInclude Include="MultiArray.h" />
+    <ClInclude Include="static_util.h" />
     <ClInclude Include="Texture.h" />
+    <ClInclude Include="variant.h" />
     <ClInclude Include="Vertex.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

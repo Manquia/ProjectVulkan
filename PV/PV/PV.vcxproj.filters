@@ -24,5 +24,8 @@
     <ClInclude Include="Texture.h" />
     <ClInclude Include="Model.h" />
     <ClInclude Include="Macros.h" />
+    <ClInclude Include="LoadModel.h" />
+    <ClInclude Include="variant.h" />
+    <ClInclude Include="static_util.h" />
   </ItemGroup>
 </Project>

@@ -4,12 +4,41 @@
 // Pre-Includes required: Vulkan, glm/glm.hpp, Macros.h
 //
 #include <array>
-
-#include "MultiArray.h"
 #include <unordered_map>
-
 #include <typeinfo>
 #include <typeindex>
+#include "static_util.h"
+
+
+template <class ... Args>
+struct VertexData
+{
+	static const constexpr int s_num_params = sizeof...(Args);
+	static const constexpr std::array<uint32_t, s_num_params> type_sizes = { sizeof(Args)... };
+	//static const constexpr std::array<size_t, s_num_params>   type_offsets = 
+	static const constexpr size_t type_size =	static_sum<sizeof(Args)...>::value;
+
+	unsigned char data[type_size];
+
+	static const std::array<const std::type_info*, s_num_params>& getTypeIds()
+	{
+		static std::array<const std::type_info*, s_num_params> type_info_array = { &typeid(Args)... };
+		return type_info_array;
+	}
+
+	template<size_t ParameterIndex>
+	static const size_t GetOffsetOfData()
+	{
+		size_t partialSum = 0;
+		for (int i = 0; i <= ParameterIndex; ++i)
+		{
+			partialSum += type_sizes[i];
+		}
+		return partialSum;
+	}
+
+};
+
 
 
 // @HIDE ME
@@ -48,15 +77,15 @@ struct InputDescription
 	std::array<VkVertexInputAttributeDescription, attributeCount> attributes;
 };
 
-template<class MultiArrayType>
-InputDescription<MultiArrayType::s_num_arrays> GetInputDescription(int binding, VkVertexInputRate rate)
+template<class VertexDataType>
+InputDescription<VertexDataType::s_num_params> GetInputDescription(int binding, VkVertexInputRate rate)
 {
-	InputDescription<MultiArrayType::s_num_arrays> in;
-	auto typeIds = MultiArrayType::getTypeIds();
+	InputDescription<VertexDataType::s_num_params> in;
+	auto typeIds = VertexDataType::getTypeIds();
 		
 	int offset = 0;
 
-	for (int i = 0; i < MultiArrayType::s_num_arrays; ++i)
+	for (int i = 0; i < VertexDataType::s_num_params; ++i)
 	{
 		in.attributes[i].location = i;
 		in.attributes[i].binding = binding;
@@ -68,7 +97,7 @@ InputDescription<MultiArrayType::s_num_arrays> GetInputDescription(int binding, 
 			std::string("TypeIdToVKFormatMap doesn't contain a map for the type of name: ") + std::string(typeIds[i]->name())
 		);
 
-		offset += MultiArrayType::type_sizes[i];
+		offset += VertexDataType::type_sizes[i];
 	}
 
 	in.binding.binding = binding;

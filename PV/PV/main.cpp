@@ -34,6 +34,7 @@
 #include "Texture.h"
 
 #include <chrono>
+#include "LoadModel.h"
 
 // @TODO convert indicies and vertices to use this!!!
 Mesh mesh(2, 3);
@@ -184,6 +185,7 @@ private:
 	VkImageView depthImageView;
 
 	std::vector<Vertex> vertices;
+
 	VkBuffer vertexBuffer;
 	VkDeviceMemory vertexBufferMemory;
 
@@ -255,6 +257,16 @@ private:
 		createTextureImageView();
 		createTextureSampler();
 
+		// New method
+		{
+			std::string path = MeshPath("chalet.obj");
+			LoadedModelData loadedData;
+			LoadModelData(path, &loadedData);
+
+			//LoadMesh(path, &loadedData, )
+			//LoadMaterials(data)
+
+		}
 		// make buffers
 		loadModel<true>();
 		createVertexBuffer();
@@ -1366,6 +1378,7 @@ private:
 		vkBindImageMemory(device, image, imageMemory, 0);
 	}
 
+
 	template<bool removeDuplicateVerts>
 	void loadModel()
 	{
@@ -2387,13 +2400,14 @@ struct TransformData
 int main() {
 	PVWindow app;
 
-	Mesh m(2, 3);
-	TransformData t(100);
+	VertexData<glm::vec3, glm::vec2> data;
+	VertexData<glm::vec3> transformData;
 
-	try {
+	try 
+	{
 
-		auto inputDescript = GetInputDescription<decltype(Mesh::data)>(0, VK_VERTEX_INPUT_RATE_VERTEX);
-		auto transformInstanceData = GetInputDescription<decltype(TransformData::data)>(1, VK_VERTEX_INPUT_RATE_INSTANCE);
+		auto inputDescript = GetInputDescription<decltype(data)>(0, VK_VERTEX_INPUT_RATE_VERTEX);
+		auto transformInstanceData = GetInputDescription<decltype(transformData)>(1, VK_VERTEX_INPUT_RATE_INSTANCE);
 
 		app.run();
 	}
@@ -2406,6 +2420,10 @@ int main() {
 	}
 	return EXIT_SUCCESS;
 }
+
+
+
+
 
 
 
